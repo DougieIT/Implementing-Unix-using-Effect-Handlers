@@ -1,0 +1,57 @@
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+
+\newcommand{\handlerDef}[2]{
+    \[
+    \text{  #1 := handler} 
+      \left\{
+    \begin{aligned}
+        #2
+    \end{aligned}
+    \right\}
+    \]
+}
+
+\newcommand{\effectDef}[2]{
+    \[
+    \text{#1} \overset{\text{def}}{=} 
+    \left\{
+    \begin{aligned}
+        #2
+    \end{aligned}
+    \right\}
+    \]
+}
+
+\newcommand{\operation}[4]{
+    #1\left(#2\right)\left(#3. #4\right)
+}
+
+\newcommand{\equivalenceStatement}[4]{
+\begin{flushleft}
+\[
+\begin{aligned}
+    &\text{with } #1 \text{ handle} \\
+    &\quad \text{#2} \\
+    &\equiv \\
+    &\text{with } #3 \text{ handle} \\
+    &\quad \text{#4}
+\end{aligned}
+\]
+\end{flushleft}
+}
+
+\newcommand{\effectAndHandlerDef}[2]{
+\noindent\begin{tabular}{@{}l@{\hspace{1cm}}l@{}}
+\textbf{Effect Definition} & \textbf{Handler Definition} \\
+\multicolumn{1}{@{}p{0.45\linewidth}}{\raggedright\vspace*{\fill} #1} & 
+\multicolumn{1}{p{0.45\linewidth}}{\raggedright\vspace*{\fill} #2}
+\end{tabular}
+}
+
+\newcommand{\equivLine}[2]{
+\begin{flushleft}
+\hspace*{2em} \text{(#1)} \quad $\equiv$ \quad #2
+\end{flushleft}
+}

@@ -1,0 +1,865 @@
+% UG project example file, February 2022
+%   A minior change in citation, September 2023 [HS]
+% Do not change the first two lines of code, except you may delete "logo," if causing problems.
+% Understand any problems and seek approval before assuming it's ok to remove ugcheck.
+\documentclass[logo,bsc,singlespacing,parskip]{infthesis}
+\usepackage{ugcheck}
+\usepackage{xcolor}  % Package for colors
+\usepackage{listings}
+\usepackage{comment}
+\usepackage{amsmath}
+\usepackage{tcolorbox}
+\usepackage{tabularx} % Include this in the preamble
+
+
+\usepackage{amssymb}
+\input{commands.tex}
+
+
+
+
+% Include any packages you need below, but don't include any that change the page
+% layout or style of the dissertation. By including the ugcheck package above,
+% you should catch most accidental changes of page layout though.
+
+\usepackage{microtype} % recommended, but you can remove if it causes problems
+\usepackage{cite} % recommended for citations
+
+\begin{document}
+\begin{preliminary}
+
+\title{Implementing Unix using Effect Handlers}
+
+\author{Douglas Torrance}
+
+% CHOOSE YOUR DEGREE a):
+% please leave just one of the following un-commented
+%\course{Artificial Intelligence}
+%\course{Artificial Intelligence and Computer Science}
+%\course{Artificial Intelligence and Mathematics}
+%\course{Artificial Intelligence and Software Engineering}
+%\course{Cognitive Science}
+\course{Computer Science}
+%\course{Computer Science and Management Science}
+%\course{Computer Science and Mathematics}
+%\course{Computer Science and Physics}
+%\course{Software Engineering}
+%\course{Master of Informatics} % MInf students
+
+% CHOOSE YOUR DEGREE b):
+% please leave just one of the following un-commented
+%\project{MInf Project (Part 1) Report}  % 4th year MInf students
+%\project{MInf Project (Part 2) Report}  % 5th year MInf students
+\project{4th Year Project Report}        % all other UG4 students
+
+
+\date{\today}
+
+\abstract{
+
+Algebraic effect provide a structured and modular way to reason about computational effects, such as exceptions, state and concurrency. Most imperative programming languages do not provide a structured method of handling effects, and functional approaches such as Monads lead to poor modularity and composability issues.
+
+Effect handlers have emerged as a flexible, first-class mechanism to define and interpret effects dynamically. It is particularly useful for modelling complex control flows were it has found use in Multicore OCaml. 
+
+Unix was developed in the 1970s at Bell Labs to provide a new approach to operating system design. Prior operating systems were typically monolithic and hardware specific. Unix's was designed to be a small, portable and multi-user operating system which emphasised simplicity, modularity and composability. 
+Its key innovations were
+\begin{itemize}
+    \item Everything is a file - a unified abstraction for devices, processes and data
+    \item Pipes and redirection - provides a mechanism to compose commands into programs
+    \item Simplified interface - provides a small set of system calls for a consistent way of interacting with; process management, file handling and I/O
+\end{itemize}
+
+This dissertation is composed of two parts. The first part implements the "Tiny Unix" system described in Hillerström's "Foundations for Programming and Implementing Effect Handlers". This is written in the Koka programming language to provide a modular and composable implementation of Unix functionality. The second part uses algebraic equivalence rules from Pretnar's "An Introduction to Algebraic Effects and Handlers" to perform reasoning on the implementation, we determine the properties of this implementation and how it compares to standard Unix implementations. 
+
+
+
+}
+
+\maketitle
+
+\newenvironment{ethics}
+   {\begin{frontenv}{Research Ethics Approval}{\LARGE}}
+   {\end{frontenv}\newpage}
+
+\begin{ethics}
+\textbf{Instructions:} \emph{Agree with your supervisor which
+statement you need to include. Then delete the statement that you are not using,
+and the instructions in italics.\\
+\textbf{Either complete and include this statement:}}\\ % DELETE THESE INSTRUCTIONS
+%
+% IF ETHICS APPROVAL WAS REQUIRED:
+This project obtained approval from the Informatics Research Ethics committee.\\
+Ethics application number: ???\\
+Date when approval was obtained: YYYY-MM-DD\\
+%
+\emph{[If the project required human participants, edit as appropriate, otherwise delete:]}\\ % DELETE THIS LINE
+The participants' information sheet and a consent form are included in the appendix.\\
+%
+% IF ETHICS APPROVAL WAS NOT REQUIRED:
+\textbf{\emph{Or include this statement:}}\\ % DELETE THIS LINE
+This project was planned in accordance with the Informatics Research
+Ethics policy. It did not involve any aspects that required approval
+from the Informatics Research Ethics committee.
+
+\standarddeclaration
+\end{ethics}
+
+
+\begin{acknowledgements}
+Any acknowledgements go here.
+\end{acknowledgements}
+
+
+\tableofcontents
+\end{preliminary}
+
+
+\chapter{Introduction}
+\section{Motivation}
+Effect handlers are becoming a more popular way to implement programs. Unix provides an effective subject for us to model with effect handlers. It uses abstract system calls as an interface for the programs to interact with the OS. What we are doing is providing an implementation for them. We can represent each system call as an algebraic effect and provide modular implementations for them.
+Unix provides us with complicated state and control flow problems which we can demonstrate can be simply modelled using effect handlers, whilst also providing us a way to reason about these. 
+This project will show how effect handlers can be used in a practical context to implement features in a composable way. It show cases one of the main advantages to using effect handlers, the ability reason about our code, this is particularly useful for reasoning about complicated control flows. 
+
+
+
+\section{Aims}
+The objectives of this dissertation are:
+\begin{itemize}
+    \item Provide back ground for effect handler oriented programming and how it models the Unix philosophy well
+    \item Implement the "Tiny Unix" system that Hillertstrom describes in his thesis
+    \item Perform algebraic reasoning techniques on the implementation to show it meets the required specifications. 
+    
+\end{itemize}
+
+\section{Outline}
+
+
+\chapter{Background}
+
+\section{Algebraic Effects}
+
+Algebraic effects \cite{plotkin_handling_2013} and their handlers \cite{pretnar_introduction_2015} are a structured approach to managing computational side effects. They provide a way to explicitly denote computations which produce side effects and handle them non-locally.
+
+We describe an effect by first defining its effect signature, consisting of; the operations it can perform and their input parameters and return types. This provides the interface through which we can perform a side effect. We the abstract “effect signature” and define the implementation details of handling them later. Any function which uses this effect (unless it is handling itself), must include this effect as part of its function signature. 
+
+These effects must be handled at some point using an effect handler. When the runtime encounters an effect it searches through successively outer scopes until it finds the appropriate effect handler. This allows the effect to be handled in different ways depending on the scope in which the effect was raised. The effect handler will eventually run the code which carries out the intended side effect. Effect handlers can implement interesting control flow by capturing and managing the program’s continuation.
+
+Effect handler’s separate the core business logic of the program from the implementation details of handling side effects. This means side-effect handling logic is no longer scattered around the code base, improving the modularity of the code. 
+For example, to implement logging data accesses from a database, one would usually implement logging logic in all data access functions violating the single responsibility principle. Whereas with effect handlers you can define the logging effect and handle all the logging logic in one place. 
+
+Modular code allows us to easily compose effectful operations together. When chaining effectful operations in languages like Java it is not clear where the effect is occurring and how errors are handled, making it hard to reason about how the operations will work together. This feature makes effect handler’s very useful implementing side effects such as asynchronous operations, state management, logging, exception handling etc. 
+
+In the context of functional programming, effects handlers provide a simple and lightweight method of handling side effects. They are a viable alternative to the monad to handle side-effects in a functional setting. It provides a more modifiable approach compared to monads which can be rigid once they are defined. It is easier than applying monad transformers to combine side effects. It also can have better performance compared to chained monads wrapping and unwrapping values into monadic values.
+
+\section{Support for Effect Handlers}
+
+As of the time of writing this paper, effect handlers only have native support in research languages such as Koka and Effect. Some languages have concepts similar to effect handlers, for example the concept of hooks in React are similar to effect handlers in the way they allow you to handle side effects in functional components. 
+
+Features required to have a strong support for effect systems include: 
+\begin{itemize}
+    \item First class effect handlers
+    \item Delimited continuations
+    \item Optimisation for nested effects 
+    \item Effect Type System. 
+    \begin{itemize}
+        \item Ability to write custom effect types 
+        \item Effect signatures greatly eases reasoning about code and indicates purity vs impurity
+        \item Effect type safety and inference
+        \item Effect polymorphism
+
+
+    \end{itemize}
+    
+\end{itemize}
+ 
+\subsection{Native Support}
+
+\begin{itemize}
+    \item Eff \cite{eff_effects}: This language is specifically designed for algebraic effects and effect handlers. It has support for first class effect handlers, delimiting effects and abstract effects
+    \item Koka \cite{koka_effects}: This supports effect type inference, strongly distinguishes between pure and impure computations
+    \item MultiCore OCaml \cite{ocaml_effects}: An official extension for OCaml which provides effect typing, first class effect handlers and strong pattern matching. integrates well with handling effect cases
+\end{itemize}
+
+
+\subsection{Library Support}
+Many languages have their own libraries which attempt to implement effect handlers. These implementations often come with downsides compared to native implementations. Languages which don’t have first class functions which makes it difficult to compose effects. Languages lacking an advanced type system find it difficult to create flexible and reusable handlers. Often languages’ type systems don’t provide type inference and ensure type safety for effects. They are also not optimised to track the multiple layers of context that an effect handler may produce. Despite this, there are some languages with effective third party libraries for using effect handlers.
+
+\begin{itemize}
+    \item Haskell \cite{haskell_effects}: The polysemy library provides a strong implementation of effect handlers, including first class effect handlers, effect polymorphism, effect type inference. However its limited support makes it impractical to use so far.
+    \item Scala \cite{scala_effects}: The Cats Effect library has good performance and provides effect type polymorphism. However it doesn’t provide first class effect handlers or directly support delimited continuations.
+\end{itemize}
+
+\section{Syntax for Effect Handlers}
+
+\subsection{Effect System}
+Effect Handler oriented languages have what is known as an effect system \cite{bauer_effect_2013}. This describes the computational effects that may occur when a piece of code is executed. An effect system is typically an extension of a type system. Effect systems can be used to enforce effect safety, ensuring all effects are handled and functions only perform the side effects denotd in their effect signature
+
+
+
+\lstset{
+backgroundcolor=\color{gray!5}, % Set background color
+    basicstyle=\ttfamily,              % Use monospace font
+    frame=none,                      % Add a frame around the pseudocode
+    numbers=none,                      % No line numbers
+    tabsize=4                          % Set tab size
+}
+
+
+
+
+\subsection{Effect Type}
+An effect type provides an explicit way to denote the side effects that a function performs. Each effect type can have multiple effectful operations. Each effectful operation can have parameters with value types and a valued return type. Note that operations can also produce effects and therefore have effect types.
+
+\begin{lstlisting}
+effect exception
+    ctl exn(error_msg : string) : a 
+
+fun safe_div (x : int, y: int) : exn int
+    if y == 0 then exn("div by zero") else return x/y
+\end{lstlisting}
+
+Pure functions use the unit effect type. This shows it has no side effects. 
+
+\begin{lstlisting}
+fun add (x: Int, y: int) : () int {
+	return x + y
+}
+\end{lstlisting}
+
+\section{Shallow vs Deep Handlers}
+
+Deep handlers \cite{hillerstrom_foundations_nodate} handlers can handle all the effects caused by a computation. When the continuation is captured in a handler, the captured continuation is also wrapped in the handler. This means that deep handlers can handle effects, which themselves invoke effects. 
+
+In contrast, shallow handlers \cite{ryu_shallow_2018} only manages the first effect caused by a computation. The resumed program no longer includes the handler and the programmer needs to provide a new handler for an effect the resumption may perform.
+Deep and Shallow handlers can simulate each others behaviour. However it may make more sense to use one type over another in certain contexts. Most languages only support one or the other. As of 2024 deep handlers are the more popular choice amongst effect oriented languages.
+
+
+
+
+\section{Unix}
+Unix is an operating system developed by Bell Labs in the 1970s. Its aim is to create a portable, multi-user, multi-tasking system. It is responsible for managing the:
+\begin{itemize}
+    \item Processes: creating, managing process communication, terminating processes, forking processes
+    \item Scheduling
+    \item Basic IO
+    \item User and user environment managment
+\end{itemize}
+
+Unix is built on the “Unix Philosophy” which follows the principles of simplicity and modularity. The “everything is a file” philosophy of unix provides a consistent interface for us to interact with system resources. This will allow us to separate functionality into modules and implement them using effect handlers.
+
+\section{Evaluating Previous work}
+Daniel Hillerstrom has implemented a theoretical implementation of unix in his 2021 paper “Foundations for Programming and Implementing Effect Handlers” \cite{hillerstrom_foundations_nodate}. He makes analogy between operating systems and effect handlers that both interpret a series of abstract commands, in the case of the OS this is system calls, in the case of effect handlers, this is operations. The composition of effect handlers, which he views as “tiny operating systems” can provide semantics for a unix implementation. He uses deep handlers to implement; multiple user sessions, time-sharing and file IO.
+
+This paper will use Koka to create a concrete implementation of the abstract syntax he used in his paper. Then we will implement proof by inductions to show certain properties about effect handlers.
+
+\chapter{Unix Implementation}
+This chapter shows the implementation of the "Tiny Unix" system written by Hillerstrom in the Koka programming language. In his thesis, Hillertrom uses a pseudo-lambda calculus that can switch between deep and shallow handlers. I only use deep handlers in my Koka implementation.
+
+\section{Process Status}
+In Unix, when processes exit they must provide a code. A return code of 0 represents a successful execution and any other number otherwise. In a real unix system, the specific non-zero number represents the type of error, however we won't implement this level of detail in our system.
+
+
+\begin{lstlisting}
+dfd
+\end{lstlisting}
+
+\section{Basic IO}
+Hillerstrom first models a simplified form of state, consisting of a single file, stdout which we can write to. Although stdout isn't a regular file, due to Unix's "Everything is a file" it is designed to be interacted with like anyother file
+\begin{lstlisting}
+dfd
+\end{lstlisting}
+
+\section{Users and Environment Variables}
+Environment variables are key-value pairs stored in the environment of a process. In this implementation, we store the current user's name as an environment variable.
+
+\section{Nondeterminism}
+
+Hillerstrom describes how forking is a nondeterministic operation as from the perspective of the process making the Fork call it is unclear in which order the processes will execute due to the operating systems scheduling policy. 
+
+\chapter{Reasoning}
+
+In this section we used equational reasoning defined in Pretnar's Handlers Tutorial \cite{pretnar_introduction_2015}. We use the algebraic equivalences describing deep effect handlers shown in figure... These allow us to show the observational equivalence of two programs. By this definition two programs are equivalent if no external observer can distinguish between them. 
+The external observer would have access to external state or communication channels with external systems.
+
+
+Observational Equivalence is useful for;
+\begin{itemize}
+    \item Reducing program complexity, we can replace a complex program with a more simple one
+    \item Proving correctness, we can show that a function is implemented correctly by showing the implementation matches the specification in terms of observable behaviour.
+
+In this section we will compare Hillerstrom's implementation of "Tiny Unix" to the Unix specification. We will also show interesting properties of Unix  
+
+\end{itemize}
+\begin{figure}[h]
+    \centering
+    \begin{tcolorbox}[colframe=black, colback=white, sharp corners]
+    \begin{align*}
+        &\text{(1) } \quad \text{do } x \leftarrow \text{return } v \; \text{in } c \equiv c[v/x] \\
+        &\text{(2) } \quad \text{do } x \leftarrow \text{op}(v; y.\, c_1) \; \text{in } c_2 \equiv \text{op}(v; y.\, \text{do } x \leftarrow c_1 \; \text{in } c_2) \\
+        &\text{(3) } \quad \text{do } x \leftarrow c \; \text{in return } x \equiv c \\
+        &\text{(4) } \quad \text{do } x_2 \leftarrow (\text{do } x_1 \leftarrow c_1 \; \text{in } c_2) \; \text{in } c_3 \equiv \text{do } x_1 \leftarrow c_1 \; \text{in } (\text{do } x_2 \leftarrow c_2 \; \text{in } c_3) \\
+        &\text{(5) } \quad \text{if true then } c_1 \text{ else } c_2 \equiv c_1 \\
+        &\text{(6) } \quad \text{if false then } c_1 \text{ else } c_2 \equiv c_2 \\
+        &\text{(7) } \quad \text{if } v \text{ then } c[\text{true}/x] \text{ else } c[\text{false}/x] \equiv c[v/x] \\
+        &\text{(8) } \quad (\lambda x \rightarrow c) \; v \equiv c[v/x] \\
+        &\text{(9) } \quad \lambda x \rightarrow v \; x \equiv v 
+    \end{align*}
+    \end{tcolorbox}
+    \vspace{1em}
+    
+    In the following rules, we have \( h = \text{handler} \{ \text{return } x \rightarrow c_r, \text{ op}_1(x; k) \rightarrow c_1, \ldots, \text{ op}_n(x; k) \rightarrow c_n \} \):
+    \vspace{1em}
+
+    \begin{tcolorbox}[colframe=black, colback=white, sharp corners]
+    \begin{align*}
+        &\text{(10) } \quad \text{with } h \; \text{handle } (\text{return } v) \equiv c_r[v/x] \\
+        &\text{(11) } \quad \text{with } h \; \text{handle } (\text{op}_i(v; y.\, c)) \equiv c_i[v/x, (\lambda y \rightarrow \text{with } h \; \text{handle } c)/k] \quad (1 \leq i \leq n) \\
+        &\text{(12) } \quad \text{with } h \; \text{handle } (\text{op}(v; y.\, c)) \equiv \text{op}(v; y.\, \text{with } h \; \text{handle } c) \quad (\text{op} \notin \{\text{op}_i\}_{1 \leq i \leq n}) \\
+        &\text{(13) } \quad \text{with } (\text{handler} \{\text{return } x \rightarrow c_2\}) \; \text{handle } c_1 \equiv \text{do } x \leftarrow c_1 \; \text{in } c_2
+    \end{align*}
+    \end{tcolorbox}
+
+    \caption{Pretnar's Algebraic Equivalences}
+    \label{fig:equational-laws}
+\end{figure}
+
+
+
+
+
+\section{Simplified State Proofs}
+I started by reasoning on basic handlers provided in Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. This is a simplified model of state which contains only one file. In this system the set is an rather than an append. So in this sense it is more similar to setting a variable than it is to writing to a file.
+
+I could do reasoning on the four basic state proofs. These proofs are the minimum set needed to capture the basic behaviour of state. They allow us to reason about any sequence of get and sets.
+
+
+
+\handlerDef{state}{
+    &\text{get}(-, k) \mapsto \lambda s \rightarrow (k\ s)\ s \\
+    &\text{set}(s, k) \mapsto \lambda \_ \rightarrow (k\ () )\ s \\
+    &\text{return}\ x \mapsto \lambda \_ \rightarrow \text{return } x 
+}
+
+
+
+
+We can state these basic proofs as so:
+\begin{itemize}
+    \item Idempotence of set
+    \[
+    \text{set } a; \text{ set } b = \text{set } b
+    \]
+    
+    \item Read-After-Write 
+    \[
+    \text{set } a; \text{ get} = a
+    \]
+    
+    \item Idempotence of get
+    \[
+    \text{get}; \text{ get} = \text{get}
+    \]
+    
+    \item Write-After-Read 
+    \[
+    \text{get}; \text{ set } a = \text{set } a
+    \]
+\end{itemize}
+
+\subsection*{Idempotence of Set}
+
+\[
+\begin{aligned}
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{put} \; s \; (x. \operatorname{put} \; s' \; (y. C)) \\
+    &\equiv \\
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{put} \; s' \; (y. C)
+\end{aligned}
+\]
+
+\subsection*{Idempotence of Get}
+
+
+
+\[
+\begin{aligned}
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{get}() \left( \mathsf{x.get}() \left( y.C \right) \right) \\
+    &\equiv \\
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{get}() \left( x.C[x/y] \right)
+\end{aligned}
+\]
+\noindent\textbf{LHS}
+
+\begin{flushleft}
+\begin{tabular}{lll}
+    (11) & $\equiv$ & $\lambda s \rightarrow (k\ s)\ s \; [()/v, \lambda x \rightarrow \text{with state handle get()}(y.C)/k]$ \\
+    (subst) & $\equiv$ & $\lambda s \rightarrow ((\lambda x \rightarrow \text{with state handle get()}(y.C)) \; s) \; s$ \\
+    (8) & $\equiv$ & $\lambda s \rightarrow (\text{with state handle get()}(y.C))[s/x] \; s$ \\
+    (subst) & $\equiv$ & $\lambda s \rightarrow \text{with state handle get()}(y.C[s/x]) \; s$ \\
+    (11) & $\equiv$ & $\lambda s \rightarrow ((\lambda s^* \rightarrow (k \; s^*) \; s^*) \; [()/v, \lambda y \rightarrow \text{with state handle}/k]) \; s$ \\
+    (subst) & $\equiv$ & $\lambda s \rightarrow ((\lambda s^* \rightarrow (\lambda y \rightarrow \text{with state handle} \; C[s/x]) \; s^*) \; s^* ) \; s$ \\
+    (8) & $\equiv$ & $\lambda s \rightarrow (\lambda s^* \rightarrow \text{with state handle} \; C[s/x][s^*/y]) \; s$ \\
+    (8) & $\equiv$ & $\lambda s \rightarrow \text{with state handle} \; C[s/x][s/y] \; s$
+\end{tabular}
+\end{flushleft}
+
+\noindent\textbf{RHS}
+
+\begin{flushleft}
+\begin{tabular}{lll}
+    (11) & $\equiv$ & $\lambda s \rightarrow (k \; s) \; s \; [()/v, C[x/y]]$ \\
+    (subst) & $\equiv$ & $\lambda s \rightarrow (\lambda x \rightarrow \text{with state handle} \; C[x/y]) \; s$ \\
+    (8) & $\equiv$ & $\lambda s \rightarrow \text{with state handle} \; C[x/y][s/x] \; s$
+\end{tabular}
+\end{flushleft}
+
+\[
+\textbf{LHS} \equiv \textbf{RHS} \quad \text{and} \quad C[s/x][s/y] \equiv C[x/y][s/x]
+\]
+
+
+\subsection*{Read-After-Write}
+
+\[
+\begin{aligned}
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{put} \; s' \; (x. \operatorname{get}() \; (y. C)) \\
+    &\equiv \\
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{put} \; s' \; (x. C[s'/x])
+\end{aligned}
+\]
+
+\subsection*{Write-After-Read}
+\[
+\begin{aligned}
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{get}() \left( x. \operatorname{put} \; s' \; (y. C) \right) \\
+    &\equiv \\
+    &\mathsf{with} \; \mathsf{state} \; \mathsf{handle} \\
+    &\quad \operatorname{put} \; s' \; (y. C[s/x])
+\end{aligned}
+\]
+
+
+\noindent
+\begin{flalign*}
+    (11) &\equiv \lambda s. (k \; s) \; s 
+    \big[ () / v, \lambda x. \mathsf{with} \; \operatorname{state} \; \mathsf{handle} \; 
+    \operatorname{get}()(y.C) / k \big] \quad (\text{subst})
+\end{flalign*}
+
+
+
+\begin{align*}
+    (11) &\equiv \lambda s. (k \; s) \; s 
+    \big[ () / v, \lambda x. \mathsf{with} \; \operatorname{state} \; \mathsf{handle} \; 
+    \operatorname{get}()(y.C) / k \big] \quad (\text{subst})
+\end{align*}
+
+\section{Exceptions}
+Processes can terminate successfully by running to completion, or they can terminate by performing an exit system call. The exit call is parameterised by a number which indicates the exit status.
+
+An exception does not allow recovery from the error as the process is terminated. 
+
+
+
+\effectAndHandlerDef{
+    \effectDef{status}{\text{Exit : Int} \rightarrow 0}
+}{
+    \handlerDef{status}{
+      \text{return } \_ \mapsto 0 \\
+      \ll \text{Exit } n \gg \mapsto n
+    }
+}
+
+
+
+\subsection*{Absorption}
+
+The absorption property states that once an operation like exit is called within a computation, any further computation is ignored and discarded. Formally, we can express this as:
+
+\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)}
+
+Since \texttt{Exit n} has a return type of 0, which is the uninhabited type, i.e. a type which has no associated values, the expression \texttt{Exit n} can't return a value. The absurd function is used to coerce this to return a value of type $\alpha$.
+This is due to the fact that \texttt{Exit n} has no resumption. There is no computation left after calling Exit n so it doesn't make sense for it to return a value.
+The expression Exit n on its own is not well-defined in this type system, because it doesn't return a meaningful value, so we must wrap it in this exit n function so we can use it in the code.
+
+\handlerDef{exit n}{ \text {absurd (do  Exit 
+ n)}}
+
+\noindent\textbf{LHS}
+
+\begin{flushleft}
+\renewcommand{\arraystretch}{1.3} % Adjust row spacing if needed
+\begin{tabular}{ll}  % Left-align both columns
+    \text{(subst)} & \quad $\equiv$ \text{absurd (do Exit } n) (y. C)  \\
+    \text{(11)} & \quad $\equiv v$ [n/v, fun y $\rightarrow$ \text{with status handle } C/k] \\
+    \text{(subst)} & \quad $\equiv n$
+\end{tabular}
+\end{flushleft}
+
+\noindent\textbf{RHS}
+
+\begin{flushleft}
+\begin{tabular}{ll}
+    \text{(11)} & \quad $\equiv$ \text{absurd (do Exit } n) (y. $\perp$) \\
+    \text{(11)} & \quad $\equiv v$ [n/v, fun y $\rightarrow$ \text{with status handle } $\perp$/k] \\
+    \text{(subst)} & \quad $\equiv n$
+\end{tabular}
+\end{flushleft}
+
+\section{Environment Variables}
+Environment variables are name-value pairs specific to each process. In our system the only environment variable we need to reason about is the user 
+
+In this section we only examine intra process reasoning.
+This can be seen as a specialisation of the state proofs we have done before. The same state laws will apply here.
+However this case is interesting as the way it implements state is quite different to the previous example. The \texttt{BasicIO} models state as a single global file, whereas this models state as a locally scope handler instance. Mutation occurs through handler overloading rather than direct state updates.
+
+
+
+This is an effective way modelling state for independent processes, it allows each state to be isolated and for the nested processes to automatically unwind.
+
+We will examine, in a later section, the strength of this approach by reasoning about how it interacts with process forking. For now we will show it holds the same basic state proofs as \texttt{BasicIO} 
+
+
+The put operation corresponds to switch user command and the get operation corresponds to the whoami() command. Similarly, it works on a single "cell" for each process. 
+
+\handlerDef{sessionmgr $\langle user, m \rangle$}{
+    env$\langle user; (\lambda \langle \rangle .\ \text{handle } m \langle \rangle \text{ with}$ \\
+    \quad \textbf{return} $res \rightarrow res$ \\
+    \quad $\langle \langle \text{Su } user' \rightarrow resume \rangle \rangle \rightarrow \text{env}\langle user', resume \rangle))$
+}
+
+\subsection*{Switch User Idempotence}
+
+\begin{lstlisting}
+Su(Alice);
+Su(Alice);
+\end{lstlisting}
+$\equiv$
+\begin{lstlisting}
+Su(Alice);
+\end{lstlisting}
+
+\equivalenceStatement{sessionmgr(Root)}
+{\text{Su(Alice); \newline Su(Alice;}}{sessionmgr(Root)}{Su(Alice);}
+
+\section{Process Forking}
+Process forking introduces a number of interesting properties for us to consider. We will first examine the properties that the Fork handlers have themselves, then we will go on to anaylse how they interact with other handlers. 
+
+\subsection*{Associativity}
+
+\[
+(a \oplus b) \oplus c \quad \equiv \quad a \oplus (b \oplus c)
+\]
+
+This is an important property to prove for parrallel programming purposes. We can show that despite the fact that the process tree structure are different, the order of execution will remain the same. As long as the are independent processes don't rely on the parent i.e. wait() commands, signals or inherited environment variables child dependencies then this equivalent.
+
+This is a useful property as it allows us as programmers to rearrange or simplify complex structures.
+For example:
+
+\[
+\begin{aligned}
+    &\text{Server forks Worker 1} \\
+    &\quad\quad \text{Worker 1 forks Worker 2} \\
+    &\quad\quad\quad\quad \text{Worker 2 forks Worker 3}
+\end{aligned}
+\]
+\[
+\begin{aligned}
+    &\text{Server forks Worker 1} \\
+    &\text{Server forks Worker 2} \\
+    &\text{Server forks Worker 3}
+\end{aligned}
+\]
+
+
+
+\equivalenceStatement{nondet}
+{
+if Fork() then
+if Fork() 
+a 
+else 
+b 
+else 
+c
+}
+{nondet}
+{
+if Fork() then a 
+else 
+if Fork() 
+ then b 
+ else c
+}
+
+\noindent\textbf{LHS}
+\begin{flushleft}
+\renewcommand{\arraystretch}{1.3} % Adjust row spacing if necessary
+\begin{tabularx}{\textwidth}{l X}
+    (11) & $\equiv$ resume true ++ resume false [()/x, fun r $\rightarrow$ with nondet handle (if r then a else Fork()(s $\rightarrow$ if s then b else c)) / k] \\
+    (subst) & $\equiv$ (fun r $\rightarrow$ with nondet handle (if r then a else Fork()(s $\rightarrow$ if s then b else c))) true \\
+            & \quad ++ (fun r $\rightarrow$ with nondet handle (if r then a else Fork()(s $\rightarrow$ if s then b else c))) false \\
+    (8 + evaluate) & $\equiv$ with nondet handle a ++ with nondet handle Fork()(s $\rightarrow$ if s then b else c) \\
+    (11) & $\equiv$ a ++ (resume true ++ resume false [()/x, fun s $\rightarrow$ if s then b else c / k]) \\
+    (subst) & $\equiv$ a ++ ((fun s $\rightarrow$ if s then b else c) true) ++ ((fun s $\rightarrow$ if s then b else c) false) \\
+    (8 + evaluate) & $\equiv$ a ++ (b ++ c)
+\end{tabularx}
+\end{flushleft}
+
+\noindent\textbf{RHS}
+
+\begin{flushleft}
+\renewcommand{\arraystretch}{1.3} % Adjust row spacing if necessary
+\begin{tabularx}{\textwidth}{l X}
+    (11) & $\equiv$ resume true ++ resume false [()/x, fun r $\rightarrow$ with nondet handle (if r then Fork()(s $\rightarrow$ if s then a else b) else c) / k] \\
+    (subst) & $\equiv$ (fun r $\rightarrow$ with nondet handle (if r then Fork()(s $\rightarrow$ if s then a else b) else c)) true \\
+            & \quad ++ (fun r $\rightarrow$ with nondet handle (if r then Fork()(s $\rightarrow$ if s then a else b) else c)) false \\
+    (8 + evaluate) & $\equiv$ with nondet handle Fork()(s $\rightarrow$ if s then a else b) ++ with nondet handle c \\
+    (11) & $\equiv$ (resume true ++ resume false [()/x, fun s $\rightarrow$ if s then a else b / k]) ++ c \\
+    (subst) & $\equiv$ ((fun s $\rightarrow$ if s then a else b) true) ++ ((fun s $\rightarrow$ if s then a else b) false) ++ c \\
+    (8 + evaluate) & $\equiv$ ((fun s $\rightarrow$ if s then a else b) true) ++ ((fun s $\rightarrow$ if s then a else b) false) ++ c \\
+    (evaluate) & $\equiv$ (a ++ b) ++ c
+\end{tabularx}
+\end{flushleft}
+
+\[
+\textbf{LHS} = \textbf{RHS} \quad \text{and} \quad a ++ (b ++ c) \equiv (a ++ b) ++ c
+\]
+
+
+\subsection*{Distributivity}
+Distributivity describes how two binary operation interact with one another. Formally, given three elements A,B,C and two binary operations $\diamond, \circ $
+
+\[
+(B \circ A) \diamond (C \circ A)  \equiv (B \diamond C) \circ A
+\]
+
+\subsubsection*{Right Distributivity}
+We can show that non determinism and sequencing (considered a binary operation \texttt{P;Q}) are right distributive within our system. 
+We can prove that the code:
+
+\begin{lstlisting}
+
+if Fork()
+    then P; R;
+    else Q; R;
+}
+\end{lstlisting}
+$\equiv$
+\begin{lstlisting}
+if Fork() 
+    then P;
+    else Q;
+R;
+\end{lstlisting}
+
+
+
+Expressing this property in the continuation passing style of our equivalence rules:
+
+\equivalenceStatement{nondet}{Fork()(t.(if t then P;R else Q;R) 
+}{nondet}{Fork()(t.(if t then P else Q); R)
+}
+
+\begin{flushleft}
+\begin{tabular}{lll}
+    \textbf{LHS} \\ 
+    (11) & $\equiv$ & \text{resume true} ++ \text{resume false} [()/x, fun t $\rightarrow$ (if t then P;R else Q;R)/k] \\
+    (subst) & $\equiv$ & (fun t $\rightarrow$ if t then P;R else Q;R) true \\
+            &          & ++ (fun t $\rightarrow$ if t then P;R else Q;R) false \\
+    (8, simplify) & $\equiv$ & P;R ++ Q;R \\[1em]
+
+    \textbf{RHS} \\ 
+    (11) & $\equiv$ & \text{resume true} ++ \text{resume false} [()/x, fun t $\rightarrow$ if t then P else Q;R) / k] \\
+    (subst) & $\equiv$ & (fun t $\rightarrow$ (if t then P else Q);R) true \\
+            &          & ++ (fun t $\rightarrow$ (if t then P else Q); R) \\
+    (8, simplify) & $\equiv$ & (P;R) ++ (Q;R) \\
+                  & $\equiv$ & P;R ++ Q;R
+\end{tabular}
+\end{flushleft}
+
+
+\subsubsection*{Left Distributivity}
+
+Unfortunately we can't show the same for left distributivity:
+
+\begin{lstlisting}
+R;
+if Fork()
+    then P;
+    else Q;
+}
+\end{lstlisting}
+Is not equivalent to:
+\begin{lstlisting}
+if Fork()
+    then R; P; 
+    else R; Q; 
+}
+\end{lstlisting}
+This is because in the first example R is only executed once by the unforked process, whereas in the second example it is executed by both the parent and the child. 
+Mutation operations such as append(x) would be applied a different numbers of times breaking the equivalence.
+
+Whilst right distributivity does not hold in general, it does hold in the special case of idempotent effects, where repeated applications of R are equivalent to applying it once.
+
+\begin{lstlisting}
+set(x);
+if Fork()
+    then P;
+    else Q;
+}
+\end{lstlisting}
+$\equiv$
+\begin{lstlisting}
+if Fork()
+    then set(x); P;
+    else set(x); Q;
+}
+\end{lstlisting}
+
+
+\subsection*{Process Suspension and Resumption}
+We must show that the act of suspending a process through an interrupt and resuming after a number of computations doesn't change any of the processes environment variables. This is difficult to do with the current scheduler 
+
+\subsection*{Interaction With Exit}
+This next property is a specialisation of the absorption proof for exceptions shown earlier.
+
+
+\equivalenceStatement{nondet}
+{%
+\begin{aligned}
+    &\text{with status handle} \\
+    &\quad \text{if Fork() then exit(-1) else } b
+\end{aligned}
+}
+{nondet}
+{%
+\begin{aligned}
+    &-1 ++ (\text{with status handle } b)
+\end{aligned}
+}
+
+\textbf{LHS}
+\begin{flushleft}
+\renewcommand{\arraystretch}{1.3} % Adjust row spacing for better readability
+\begin{tabularx}{\textwidth}{l X}
+    (11, \text{non det}) & $\equiv$ resume true ++ resume false [()/x, (fun r $\rightarrow$ with status handle (if r then exit() else b))] \\
+    (\text{subst}) & $\equiv$ (fun r $\rightarrow$ with status handle (if r then exit() else b)) true \\
+                   & \quad ++ (fun r $\rightarrow$ with status handle (if r then exit() else b)) false \\
+    (8 + simplify) & $\equiv$ with status handle (exit(-1)) ++ with status handle (b) \\
+    (11, \text{status}) & $\equiv$ x [-1/x, fun x $\rightarrow$ C / k] ++ with status handle (b) \\
+    (\text{subst}) & $\equiv$ -1 ++ with status handle (b)
+\end{tabularx}
+\end{flushleft}
+
+\[
+\textbf{LHS = RHS}
+\]
+
+\subsection*{Interaction With Environment Variables}
+According to the Unix specifications, when a child is forked from its parent, it inherits some of the parent's state including environment variables. However from this point onwards the environments are separate and changes to the child's environment variable shouldn't affect the parent's and vice versa.
+
+\subsubsection*{Parent Changing User doesn't Affect the Child}
+\begin{lstlisting}
+#Starts as root
+
+if Fork()
+    su(Alice);
+    whoami();
+}
+else {
+    whoami();
+}
+
+# Should produce ["Alice", "Root"]
+\end{lstlisting}
+
+
+\equivalenceStatement{nondet}
+{%
+\begin{aligned}
+    &\text{with sessionmgr(Root) handle} \\
+    &\quad \text{ Fork()(r.(if r then (su; whoami()) else whoami()))}
+\end{aligned}
+}
+{}
+{}
+
+
+
+\begin{flushleft}
+\renewcommand{\arraystretch}{1.3} % Adjust row spacing if necessary
+\begin{tabularx}{\textwidth}{l X}
+    (12) & with nondet handle \\
+         & \quad Fork()(r $\mapsto$ with sessionmgr handle (if r then (su; whoami()) else whoami())) \\
+    (11) & $\equiv$ resume(true) ++ resume(false) [ ()/x, fun r $\rightarrow$ with sessionmgr handle (if r then (su; whoami()) else whoami()) / k ] \\
+    (subst) & $\equiv$ (fun r $\rightarrow$ with sessionmgr handle (if r then (su; whoami()) else whoami())) true \\
+         & \quad ++ (fun r $\rightarrow$ with sessionmgr handle (if r then (su; whoami()) else whoami())) false \\
+    (8) & $\equiv$ with sessionmgr handle (su("Alice")(x. whoami()(y.C))) \\
+         & \quad ++ with sessionmgr("root") handle (whoami()(z.C)) \\
+    (11) & $\equiv$ env(x, k) [(“Alice”/x, fun y $\rightarrow$ with sessionmgr handle whoami()(y.C)/k)] \\
+         & \quad ++ (z $\leftarrow$ do Ask()) [()/x, fun z $\rightarrow$ with env handle C/k]
+\end{tabularx}
+\end{flushleft}
+
+\textbf{RHS}
+
+\section{Pipe}
+
+\chapter{Conclusions}
+
+\section{Final Reminder}
+
+The body of your dissertation, before the references and any appendices,
+\emph{must} finish by page~40. The introduction, after preliminary material,
+should have started on page~1.
+
+You may not change the dissertation format (e.g., reduce the font size, change
+the margins, or reduce the line spacing from the default single spacing). Be
+careful if you copy-paste packages into your document preamble from elsewhere.
+Some \LaTeX{} packages, such as \texttt{fullpage} or \texttt{savetrees}, change
+the margins of your document. Do not include them!
+
+Over-length or incorrectly-formatted dissertations will not be accepted and you
+would have to modify your dissertation and resubmit. You cannot assume we will
+check your submission before the final deadline and if it requires resubmission
+after the deadline to conform to the page and style requirements you will be
+subject to the usual late penalties based on your final submission time.
+
+% \bibliographystyle{plain}
+\bibliographystyle{plain}
+\bibliography{mybibfile}
+
+
+% You may delete everything from \appendix up to \end{document} if you don't need it.
+\appendix
+
+\chapter{First appendix}
+
+\section{First section}
+
+Any appendices, including any required ethics information, should be included
+after the references.
+
+Markers do not have to consider appendices. Make sure that your contributions
+are made clear in the main body of the dissertation (within the page limit).
+
+\chapter{Participants' information sheet}
+
+If you had human participants, include key information that they were given in
+an appendix, and point to it from the ethics declaration.
+
+\chapter{Participants' consent form}
+
+If you had human participants, include information about how consent was
+gathered in an appendix, and point to it from the ethics declaration.
+This information is often a copy of a consent form.
+
+
+\end{document}
