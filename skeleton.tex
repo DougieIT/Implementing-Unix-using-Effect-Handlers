@@ -10,11 +10,33 @@
 \usepackage{amsmath}
 \usepackage{tcolorbox}
 \usepackage{tabularx} % Include this in the preamble
-
+\usepackage{float}
 
 \usepackage{amssymb}
 \input{commands.tex}
 
+\lstdefinelanguage{Koka}{
+  keywords={fun, return,  var, match, if, then, else, do, with},
+  morekeywords=[2]{resume,val, handle, ctl, effect},
+  morekeywords=[3]{Sstate, Ready, Blocked, Proc, Nil, Cons},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+}
+
+\lstset{
+  language=Koka,
+  basicstyle=\scriptsize\ttfamily,
+  keywordstyle=\color{purple},          % Group 1: basic syntax
+  keywordstyle=[2]\color{blue},         % Group 2: effect-related
+  keywordstyle=[3]\color{teal},         % Group 3: data constructors
+  commentstyle=\color{gray},
+  stringstyle=\color{orange},
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false
+}
 
 
 
@@ -615,6 +637,12 @@ fun fileCreateOpen<a>(action : () -> <fileCO, div, state<fileSystem>|e> a) : <st
 \end{lstlisting}
 
 \subsection*{Stream Redirection}
+We define the stream redirection operator \texttt{>} to allow us to redirect output streams from processes to files. This is an essential feature for composing commands, enabling pipelines as it allows us to build pipelines without need for explicit intermediate storage.
+
+
+\begin{lstlisting}
+    //
+\end{lstlisting}
 
 \subsection*{File Linking and Unlinking}
 We will implement two new operations, linking and unlinking files. There are 2 main types of link in Unix, hard and symbolic. We will implement hard links, this means that multiple file names can point to the same iNode. This allows us to create multiple references to the same underlying file.
@@ -626,22 +654,146 @@ effect fileLU
 \end{lstlisting}
 
 
+\begin{lstlisting}
+fun flink(src : string, dest : string, fs : fileSystem) : <div,fail> fileSystem {
+  if has(dest, fs.dir) then
+    fail()  // If `dest` exists, fail
+  else {
+    val ino = lookupDirectory(src, fs.dir)
+
+    val dir' = Directory(Cons((dest, ino), fs.dir.d_list))
+
+    val inode = lookupINode(ino, fs.ilist)
+
+    val inode' = INode(inode.no, inode.loc + 1)
+
+    val ilist' = modifyINode(ino, inode', fs.ilist)
+
+    FileSystem(dir', ilist', fs.dreg, fs.dnext, fs.inext)
+  }
+}
+\end{lstlisting}
+
+
+\subsection*{Piping}
+\begin{lstlisting}
+effect produce<b>
+  ctl yield(x : b) : ()   
+
+effect consume<b>
+  ctl await() : b         
+
+\end{lstlisting}
+
+\subsection*{Process Synchronisation}
+
+In this section we introduce more advanced techniques for process scheduling. The current system is purely non-deterministic, it does not give us any control over how these processes interact. This new scheduler allows us to coordinate processes by controlling the order in which processes are executed, vital for executing tasks which have temporal dependencies. This introduces more invariants and partial ordering.
+
+We begin by defining a new set of effects. We update the forking mechanism \texttt{ufork()} to a return an integer instead of a boolean. The operation is still intended to return twice; it returns the process identifier (PID) to the parent and 0 to the child process. The \texttt{interrupt()} operation is exactly the same as before, invoked to suspend the current process and allow another to run. The \texttt{wait} operation is parametrised with an integer, which represents the process which must complete before the invoking process can continue. The invoking process will be blocked until this happens.
+\begin{lstlisting}
+effect co
+  ctl ufork() : int
+  ctl wait(pid: int): ()
+  ctl sinterrupt() :()
+\end{lstlisting}
+
+
+Then we define data types. \texttt{proc} represents a reified process i.e. a process that has been captured into a function which can run later. It returns a list of type list<int, a> which represents the PID and results of all the processes created during the execution of this process.  \texttt{pstate}, this represents the internal scheduling state of a single process. It is a sum type composed of two constructors, denoting if a process is Ready or Blocked. The Blocked constructor has an additional field, PID, which is the process identifier of the process that we are waiting on. \texttt{sstate}, this represents the complete state of the scheduler, it keeps track of everything it needs to manage and schedule multiple processes. It stores; a list of processes to execute, a list of completed processes, the currently executing process and pnext which is used to provide new process ids.
+\begin{lstlisting}
+rec type proc<a>
+  Proc
+    p: sstate<a> -> list<(int, a)>
+
+type spstate<a>
+  Ready
+    r : proc<a>
+  Blocked 
+    pid :int 
+    proc:proc<a>
+
+type sstate<a> 
+  Sstate     
+    q : list<(int, spstate<a>)>
+    done  : list<(int,a)>
+    pid   : int
+    pnext : int
+\end{lstlisting}
+
+
+We first define an auxiliary function which abstracts some of the scheduling logic. This function considers three cases; if the next process is ready, it is run, if the next process is blocked it is sent to the back of the queue, if there are no more processes to run, it returns the list of process results.
+
+\begin{lstlisting}
+fun runNext<a>(st: sstate<a> ) : <div,co|e> list<(int,a)> 
+  match st.q
+    Nil -> st.done
+    Cons((bpid, Blocked(pid', proc)), ps) -> 
+      val newQ = ps ++ [(bpid, Blocked(pid', proc))]
+      
+      val newsState =  Sstate (q = newQ, done = st.done, pid = st.pid, pnext = st.pnext)
+      runNext(newsState) 
+    Cons((rpid, Ready(proc)), ps) -> 
+      val newState =  Sstate (q = ps, done = st.done, pid = rpid, pnext = st.pnext)
+      val res = proc.p
+      res(newState)
+\end{lstlisting}
+
+The scheduler is a handler for concurrency effects (\texttt{co} that occur when running the suspended computation comp(). My implementation uses state to keep track of the scheduler state, instead of parameterised handlers in the original Hillerström implementation. 
+
+It handles fork operations by constructing a child process in a Ready state and adding it to the end of the process queue. The Child's resumption is parameterised with 0 so it is aware it is the child process. Finally we parameterise the resumption to the parent with the PID of the child process.
+
+Wait is parameterised by the process it Waits upon. We check the process queue for the process we are waiting for. If it is in the queue then we add this queue in a Blocked state to the end of the process queue. Otherwise we add it in a ready state to the end of the process queue.
+
+Interrupt simply adds the current process to the end of the process queue.
+
+\begin{lstlisting}
+fun scheduler<a,e>(comp : () -> <co,div> a, init : sstate<a>) : <div|e> list<(int,a)>
+  with handler
+    return(x) -> 
+      val done'   = Cons((init.pid, x), init.done)
+      val newInit = Sstate( q=init.q, done = done', pid = init.pid, pnext= init.pnext)
+      runNext(newInit)
+
+    ctl ufork() -> 
+      val childProc  = fn(st) ->  resume(0, stChild)  
+      val childPid   = init.pnext
+      val newQ       =  init.q ++ 
+                        [(childPid, Ready(childProc(st)))]
+      val st'        = SState (q = newQ, done=init.done, pid=init.pid, pnext = childPid + 1 )
+      r(childPid, st')
+
+    ctl sinterrupt() ->
+      val interrupted = fn(stInt) -> resume(())
+      val newQ        = init.q ++ [(init.pid, Ready(Proc(interrupted)))]
+      val _ = runNext(Sstate(q = newQ, done = init.done, pid = init.pid, pnext = init.pnext))
+      ()
+
+    ctl wait(pid') ->
+      val waitingProc = fn(stWait) -> r((), stWait)
+      val newQ =
+        if hasPid(pid', init.q)
+        then init.q ++ [(init.pid, Blocked(pid', Proc(waitingProc)))]
+        else init.q ++ [(init.pid, Ready(Proc(waitingProc)))]
+      runNext(Sstate( q = newQ, done = init.done, pid=init.pid,pnext=init.pnext))
+      
+  comp()
+\end{lstlisting}    
+
 
 \chapter{Reasoning}
 
-In this section we used equational reasoning defined in Pretnar's Handlers Tutorial \cite{pretnar_introduction_2015}. We use the algebraic equivalences describing deep effect handlers shown in figure... These allow us to show the observational equivalence of two programs. By this definition, two programs are equivalent if no external observer can distinguish between them. 
-The external observer would have access to external state or communication channels with external systems.
+In this section we use equational reasoning using algebraic equivalences for deep handlers as defined in Pretnar's Handlers Tutorial \cite{pretnar_introduction_2015}. These are written in figure \ref{fig:equational-laws}.  These equivalences provide a foundation for proving formal properties of Unix programs implemented using effect handlers. If we can apply these rules to transform one computation into another, we can consider them the same up to observational equivalence.
+An external observer refers to anything outside the computation itself, including systems like the file system, environment variables, or exception handlers that could observe or be affected by its effects.
 
+Effect handlers make this kind of reasoning possible by making effects explicit and providing a clear separation between where effects are invoked and how they are handled, enabling formal reasoning with algebraic rules.
 
-Observational Equivalence is useful for;
+We will use these equivalences to:
 \begin{itemize}
-    \item Reducing program complexity, we can replace a complex program with a more simple one
-    \item Proving correctness, we can show that a function is implemented correctly by showing the implementation matches the specification in terms of observable behaviour.
-
-In this section we will compare Hillerstrom's implementation of "Tiny Unix" to the Unix specification. We will also show interesting properties of Unix  
-
+    \item prove that key features of our Unix implementation are correct. 
+    \item we will examine interesting properties of these operations, individually and behaviour that arise out of their composition. 
 \end{itemize}
-\begin{figure}[h]
+
+
+\begin{figure}[H]
     \centering
     \begin{tcolorbox}[colframe=black, colback=white, sharp corners]
     \begin{align*}
@@ -649,22 +801,18 @@ In this section we will compare Hillerstrom's implementation of "Tiny Unix" to t
         &\text{(2) } \quad \text{do } x \leftarrow \text{op}(v; y.\, c_1) \; \text{in } c_2 \equiv \text{op}(v; y.\, \text{do } x \leftarrow c_1 \; \text{in } c_2) \\
         &\text{(3) } \quad \text{do } x \leftarrow c \; \text{in return } x \equiv c \\
         &\text{(4) } \quad \text{do } x_2 \leftarrow (\text{do } x_1 \leftarrow c_1 \; \text{in } c_2) \; \text{in } c_3 \equiv \text{do } x_1 \leftarrow c_1 \; \text{in } (\text{do } x_2 \leftarrow c_2 \; \text{in } c_3) \\
-        &\text{(5) } \quad \text{if true then } c_1 \text{ else } c_2 \equiv c_1 \\
-        &\text{(6) } \quad \text{if false then } c_1 \text{ else } c_2 \equiv c_2 \\
-        &\text{(7) } \quad \text{if } v \text{ then } c[\text{true}/x] \text{ else } c[\text{false}/x] \equiv c[v/x] \\
+        &\text{(5) } \quad \text{if true then } c_1 \textbf{ else } c_2 \equiv c_1 \\
+        &\text{(6) } \quad \text{if false then } c_1 \textbf{ else } c_2 \equiv c_2 \\
+        &\text{(7) } \quad \textbf{if } v \textbf{ then } c[\text{true}/x] \textbf{ else } c[\text{false}/x] \equiv c[v/x] \\
         &\text{(8) } \quad (\lambda x \rightarrow c) \; v \equiv c[v/x] \\
         &\text{(9) } \quad \lambda x \rightarrow v \; x \equiv v 
     \end{align*}
     \end{tcolorbox}
-    \vspace{1em}
     
-    In the following rules, we have \( h = \text{handler} \{ \text{return } x \rightarrow c_r, \text{ op}_1(x; k) \rightarrow c_1, \ldots, \text{ op}_n(x; k) \rightarrow c_n \} \):
-    \vspace{1em}
-
     \begin{tcolorbox}[colframe=black, colback=white, sharp corners]
     \begin{align*}
         &\text{(10) } \quad \text{with } h \; \text{handle } (\text{return } v) \equiv c_r[v/x] \\
-        &\text{(11) } \quad \text{with } h \; \text{handle } (\text{op}_i(v; y.\, c)) \equiv c_i[v/x, (\lambda y \rightarrow \text{with } h \; \text{handle } c)/k] \quad (1 \leq i \leq n) \\
+        &\text{(11) } \quad \text{with } h \; \text{handle } (\text{op}_i(v; y.\, c)) \equiv c_i[v/x, (\lambda y \rightarrow \text{with } h \; \text{handle } c)/k]  (1 \leq i \leq n) \\
         &\text{(12) } \quad \text{with } h \; \text{handle } (\text{op}(v; y.\, c)) \equiv \text{op}(v; y.\, \text{with } h \; \text{handle } c) \quad (\text{op} \notin \{\text{op}_i\}_{1 \leq i \leq n}) \\
         &\text{(13) } \quad \text{with } (\text{handler} \{\text{return } x \rightarrow c_2\}) \; \text{handle } c_1 \equiv \text{do } x \leftarrow c_1 \; \text{in } c_2
     \end{align*}
@@ -678,67 +826,42 @@ In this section we will compare Hillerstrom's implementation of "Tiny Unix" to t
 
 
 
+
+
 \section{Simplified State Proofs}
-I started by reasoning on basic handlers provided in Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. This is a simplified model of state which contains only one file. In this system the set is an rather than an append. So in this sense it is more similar to setting a variable than it is to writing to a file.
-
-I could do reasoning on the four basic state proofs. These proofs are the minimum set needed to capture the basic behaviour of state. They allow us to reason about any sequence of get and sets.
-
-
+\label{subsec:simplified-state}
+We begin by reasoning about a minimal model of state, consisting of a single global cell and get and set operations. These handlers were taken from Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. Although this model is deliberately simple, the reasoning principles it demonstrates are general. We will see that the same basic properties of state we prove here arise in more complex examples later on.
 
 \handlerDef{state}{
-    &\text{get}(-, k) \mapsto \lambda s \rightarrow (k\ s)\ s \\
-    &\text{set}(s, k) \mapsto \lambda \_ \rightarrow (k\ () )\ s \\
-    &\text{return}\ x \mapsto \lambda \_ \rightarrow \text{return } x 
+    &\text{get}(\_, k) \mapsto \text{fun s} \rightarrow (k\ s)\ s \\
+    &\text{set}(s, k) \mapsto \text{fun } \_ \rightarrow (k\ () )\ s \\
+    &\text{return}\ x \mapsto \text{fun } \_ \rightarrow \text{return } x 
 }
 
-
-
-
-We can state these basic proofs as so:
-\begin{itemize}
-    \item Idempotence of set
-    \[
-    \text{set } a; \text{ set } b = \text{set } b
-    \]
-    
-    \item Read-After-Write 
-    \[
-    \text{set } a; \text{ get} = a
-    \]
-    
-    \item Idempotence of get
-    \[
-    \text{get}; \text{ get} = \text{get}
-    \]
-    
-    \item Write-After-Read 
-    \[
-    \text{get}; \text{ set } a = \text{set } a
-    \]
-\end{itemize}
+We use this handler to prove four basic state properties. These proofs are the minimum set needed to capture the basic behaviour of state, as they allow us to reason about any sequence of get and sets.
 
 \subsection*{Idempotence of Set}
-
+The last set overwrites the first one:
 \[
 \begin{aligned}
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{put} \; s \; (x. \operatorname{put} \; s' \; (y. C)) \\
+    &\quad \operatorname{set} \; a \; (x. \operatorname{set} \; b \; (y. C)) \\
     &\equiv \\
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{put} \; s' \; (y. C)
+    &\quad \operatorname{set} \; b \; (y. C)
 \end{aligned}
 \]
 
-\textbf{Left Hand Side}
+\underline{Left Hand Side}
 
 \[ 
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
-\text{fun }\_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } put(b)(y.C)/k] \\[5pt]
+\text{fun }\_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C)/k] \\[5pt]
 \quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun }\_ \rightarrow ((\text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } put(b)(y.C))\ ())\ a \\[5pt]
+\text{fun }\_ \rightarrow ((\text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ ())\ a \\[5pt]
 \quad\equiv\quad (8) \\[5pt]
-\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } put(b)(y.C))\ a \\[5pt]
+\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ a \\[5pt]
 \quad\equiv\quad (11) \\[5pt]
 \text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C/k])\ a \\[5pt]
 \quad\equiv\quad (\text{subst}) \\[5pt]
@@ -750,7 +873,7 @@ We can state these basic proofs as so:
 \end{array}
 \]
 
-\textbf{Right Hand Side}
+\underline{Right Hand Side}
 \[ 
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
@@ -765,7 +888,7 @@ We can state these basic proofs as so:
 LHS $\equiv$ RHS
 
 \subsection*{Idempotence of Get}
-
+Reading the state twice in a row gives the same result as reading it once.
 
 
 \[
@@ -777,7 +900,7 @@ LHS $\equiv$ RHS
     &\quad \operatorname{get}() \left( x.C[x/y] \right)
 \end{aligned}
 \]
-\textbf{LHS}
+\underline{Left Hand Side}
 
 \[ 
 \begin{array}{l}
@@ -800,7 +923,7 @@ LHS $\equiv$ RHS
 
 
 
-\textbf{RHS}
+\underline{Right Hand Side}
 
 \[ 
 \begin{array}{l}
@@ -817,19 +940,19 @@ LHS $\equiv$ RHS
 
 
 
-\subsection*{Read-After-Write}
-
+\subsection*{Get-After-Set}
+Reading the state immediately after setting it returns the new value.
 \[
 \begin{aligned}
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{put} \; s' \; (x. \operatorname{get}() \; (y. C)) \\
+    &\quad \operatorname{set} \; a \; (x. \operatorname{get}() \; (y. C)) \\
     &\equiv \\
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{put} \; s' \; (x. C[s'/x])
+    &\quad \operatorname{set} \; a \; (x. C[a/x])
 \end{aligned}
 \]
 
-\textbf{Left Hand Side}
+\underline{Left Hand Side}
 \[ 
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
@@ -849,7 +972,7 @@ LHS $\equiv$ RHS
 \end{array}
 \]
 
-\textbf{Right Hand Side}
+\underline{Right Hand Side}
 \[ 
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
@@ -863,18 +986,19 @@ LHS $\equiv$ RHS
 
 
 
-\subsection*{Write-After-Read}
+\subsection*{Set-After-Get}
+
 \[
 \begin{aligned}
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{get}() \left( x. \operatorname{put} \; s' \; (y. C) \right) \\
+    &\quad \operatorname{get}() \left( x. \operatorname{set} \; a \; (y. C) \right) \\
     &\equiv \\
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{put} \; s' \; (y. C[s/x])
+    &\quad \operatorname{set} \; a \; (y. C[s/x])
 \end{aligned}
 \]
 
-\textbf{Left Hand Side}
+\underline{Left Hand Side}
 \[ 
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
@@ -893,7 +1017,7 @@ LHS $\equiv$ RHS
 \]
 
 
-\textbf{Right Hand Side}
+\underline{Right Hand Side}
 \[ 
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
@@ -907,74 +1031,113 @@ LHS $\equiv$ RHS
 LHS $\equiv$ RHS
 
 \section{Exceptions}
-Processes can terminate successfully by running to completion, or they can terminate by performing an exit system call. The exit call is parameterised by a number which indicates the exit status.
-
-An exception does not allow recovery from the error as the process is terminated. 
+Processes can terminate successfully by running to completion, or they can terminate by performing an exit system call. The exit call takes a numeric argument indicating the exit status of the process. Unlike other operations exit does not allow for continuation, it discards the remaining computation and terminates execution immediately.
 
 
-\effectDef{status}{\text{Exit : Int} \rightarrow 0}
-\handlerDef{status}{
-  \text{return } \_ \mapsto 0 \\
-  \ll \text{Exit } n \gg \mapsto n
-}
+\effectDef{exit n}{\text{Exit : Int} \rightarrow 0}
+
+\[
+\mathrm{status} \;\overset{\mathrm{def}}{=}\;
+\mathrm{handler} \;\left\{
+\begin{array}{ll}
+  \mathrm{\textbf{return}\:\_} & \mapsto 0 \quad\\[0.5ex]
+  \langle\!\langle \mathrm{Ask} \langle\rangle\rangle &  \mapsto n \quad\\[0.5ex]
+
+\end{array}
+\right\}
+\]
+
+
+
+
 
 
 
 \subsection*{Absorption}
 
-The absorption property states that once an operation like exit is called within a computation, any further computation is ignored and discarded. Formally, we can express this as:
+The absorption property states that once an exit operation is called within a computation, any further computation is irrelevant. The following formalises the property that, whatever comes after the exit, does not affect the behaviour of the program:
 
 \equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
 
-Since \texttt{Exit n} has a return type of 0, which is the uninhabited type, i.e. a type which has no associated values, the expression \texttt{Exit n} can't return a value. The absurd function is used to coerce this to return a value of type $\alpha$.
-This is due to the fact that \texttt{Exit n} has no resumption. There is no computation left after calling Exit n so it doesn't make sense for it to return a value.
-The expression Exit n on its own is not well-defined in this type system, because it doesn't return a meaningful value, so we must wrap it in this exit n function so we can use it in the code.
+Because Exit n returns type 0, the uninhabited type, it cannot yield a result. To embed it in a computation expecting a value of type $\alpha$, we use the absurd function to coerce from the empty type to $\alpha$. This reflects that any code after Exit n is unreachable, and ensures the expression remains well-typed.
 
-\handlerDef{exit n}{ \text {absurd (do  Exit 
- n)}}
 
-\noindent\textbf{LHS}
 
-\begin{flushleft}
-\renewcommand{\arraystretch}{1.3} % Adjust row spacing if needed
-\begin{tabular}{ll}  % Left-align both columns
-    \text{(subst)} & \quad $\equiv$ \text{absurd (do Exit } n) (y. C)  \\
-    \text{(11)} & \quad $\equiv v$ [n/v, fun y $\rightarrow$ \text{with status handle } C/k] \\
-    \text{(subst)} & \quad $\equiv n$
-\end{tabular}
-\end{flushleft}
 
-\noindent\textbf{RHS}
 
-\begin{flushleft}
-\begin{tabular}{ll}
-    \text{(11)} & \quad $\equiv$ \text{absurd (do Exit } n) (y. D) \\
-    \text{(11)} & \quad $\equiv v$ [n/v, fun y $\rightarrow$ \text{with status handle } D/k] \\
-    \text{(subst)} & \quad $\equiv n$
-\end{tabular}
-\end{flushleft}
+
+\[
+\mathrm{exit\:n} \;\overset{\mathrm{def}}{=}\;
+\mathrm{handler} \;\left\{
+\begin{array}{l}
+  \text{absurd\:(\textbf{do}\:Exit\:n)} \quad\\[0.5ex]
+
+\end{array}
+\right\}
+\]
+
+
+
+\underline{Left Hand Side}
+
+\[
+\begin{array}{l}
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{absurd (do Exit } n) (y. C) \\[5pt]
+\quad\equiv\quad (11) \\[5pt]
+v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } C/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+n
+\end{array}
+\]
+
+\underline{Right Hand Side}
+
+\[
+\begin{array}{l}
+\quad\equiv\quad (11) \\[5pt]
+\text{absurd (do Exit } n) (y. D) \\[5pt]
+\quad\equiv\quad (11) \\[5pt]
+v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } D/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+n
+\end{array}
+\]
 
 \section{Environment Variables}
-Environment variables are name-value pairs specific to each process. In our system the only environment variable we need to reason about is the user 
+In Unix, environment variables are a form of process-level state, mapping variable names to values. In our "Tiny Unix" system the only environment variable we represent is the user variable. 
 
-In this section we only examine intra process reasoning.
-This can be seen as a specialisation of the state proofs we have done before. The same state laws will apply here.
-However this case is interesting as the way it implements state is quite different to the previous example. The \texttt{BasicIO} models state as a single global file, whereas this models state as a locally scope handler instance. Mutation occurs through handler overloading rather than direct state updates.
+Conceptually this section is similar to the earlier simplified state model. However what distinguishes this model is how state is managed. Rather than updating a global state cell, state is handled through local handler instances that encapsulate each process’s environment. This form of state management is implemented not through direct mutation, but through dynamic handler overloading. 
 
-
-
-This is an effective way modelling state for independent processes, it allows each state to be isolated and for the nested processes to automatically unwind.
-
-We will examine, in a later section, the strength of this approach by reasoning about how it interacts with process forking. For now we will show it holds the same basic state proofs as \texttt{BasicIO} 
+In this section we only examine intra process reasoning. However in later sections we will examine how this composes with other handlers (particularly forking) and demonstrate why this is an effective way to model state for independent processes as it allows each state to be isolated and for the nested processes to automatically unwind.
 
 
-The put operation corresponds to switch user command and the get operation corresponds to the whoami() command. Similarly, it works on a single "cell" for each process. 
+\[
+\text{sessionmgr} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=} \;
+\text{env} \langle \mathit{u}, (\lambda \langle \rangle.\; \textbf{handle}\; m \langle \rangle\; \textbf{with}  \{ 
+\begin{array}{ll}
+  \textbf{return}\; res & \mapsto res \\
+  \!\langle \text{Su}\; \mathit{u'} \Rightarrow \textbf{resume} \!\rangle & \mapsto \text{env} \langle \mathit{u'}, \textbf{resume} \rangle
+\end{array}
+\} \rangle 
+\]
 
-\handlerDef{sessionmgr $\langle user, m \rangle$}{
-    env$\langle user; (\lambda \langle \rangle .\ \text{handle } m \langle \rangle \text{ with}$ \\
-    \quad \textbf{return} $res \rightarrow res$ \\
-    \quad $\langle \langle \text{Su } user' \rightarrow resume \rangle \rangle \rightarrow \text{env}\langle user', resume \rangle))$
-}
+\[
+\begin{array}{l}
+  \quad \text{env} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=} \;
+  \textbf{handle}\; m \langle \rangle\; \textbf{with} \\[0.8em]
+  \qquad \begin{array}{ll}
+    \text{return}\; res & \mapsto res \\
+    \langle\!\langle \text{Ask} \langle \rangle \Rightarrow \textbf{resume} \rangle\!\rangle & \mapsto \text{case }  \mathit{u} \; \{ \\
+    & \quad \text{user\_1} \mapsto \textbf{resume } \text{"user\_1"} \\
+    & ...\\
+    & \quad \text{user\_n} \mapsto \textbf{resume}  \text{"user\_n"} \\
+    & \}
+  \end{array}
+\end{array}
+\]
+
+
 
 \subsection*{Switch User Idempotence}
 
@@ -991,36 +1154,81 @@ Su(Alice);
 {\text{Su(Alice); \newline Su(Alice;}}{sessionmgr(Root)}{Su(Alice);}
 
 \section{Process Forking}
-Process forking introduces a number of interesting properties for us to consider. We will first examine the properties that the Fork handlers have themselves, then we will go on to anaylse how they interact with other handlers. 
+Process forking introduces a number of interesting properties for us to consider. When a process forks it introduces two suspended resumptions. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic, it cannot know when or how other processes will affect the overall state of the system.
+
+We will first examine the algebraic properties of the \texttt{nondet} handler in isolation. Then we will go on to analyse how they compose with other handlers. We will see that Forking breaks many of the algebraic properties that previously held in sequential contexts. 
 
 \subsection*{Associativity}
-
+Associativity is a fundamental algebraic property that states the grouping of operations in an expression will not change the final result: 
 \[
-(a \oplus b) \oplus c \quad \equiv \quad a \oplus (b \oplus c)
+(A \oplus B) \oplus C \quad \equiv \quad A \oplus (B \oplus C)
 \]
+In this context, the order in which fork operations are grouped does not matter, the observable behaviour, i.e. the set of possible executions remains the same. This means that the following code is equivalent:
+\begin{table}[h]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+\begin{lstlisting}
+if Fork(){
+    if Fork(){
+        A
+    }
+    else{
+        B
+    }
+}
+else{
+    C
+}
+\end{lstlisting}
+&
+&
+\begin{lstlisting}
+if Fork(){
+    A
+} 
+else{
+    if Fork(){
+        B
+    }
+    else{
+        C
+    }
+}
+\end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-2em}
 
-This is an important property to prove for parrallel programming purposes. We can show that despite the fact that the process tree structure are different, the order of execution will remain the same. This allows tree based paralleism. As long as the are independent processes don't rely on the parent i.e. wait() commands, signals or inherited environment variables child dependencies then this equivalent.
+This is an important property to prove for parallel programming purposes. It allows us as programmers to rearrange or simplify complex nesting structures. This can make it clearer where we can introduce interrupts to allow for tree-based parallelism.
+For example, if we knew that workers were indepedent of each other, restructuring the following code:
 
-This is a useful property as it allows us as programmers to rearrange or simplify complex structures.
-For example:
+\vspace{-1em} % reduce space above table
+\begin{table}[h]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+\begin{lstlisting}
+Server forks Worker 1
+    Worker 1 forks Worker 2
+        Worker 2 forks Worker 3
+\end{lstlisting}
+&
+&
+\begin{lstlisting}
+Server forks Worker 1
+Server forks Worker 2
+Server forks Worker 3
+\end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-1em} % reduce space below table
+could allow us to see more easily where we could place interrupts to allow for parallelisation.
 
-\[
-\begin{aligned}
-    &\text{Server forks Worker 1} \\
-    &\quad\quad \text{Worker 1 forks Worker 2} \\
-    &\quad\quad\quad\quad \text{Worker 2 forks Worker 3}
-\end{aligned}
-\]
-\[
-\begin{aligned}
-    &\text{Server forks Worker 1} \\
-    &\text{Server forks Worker 2} \\
-    &\text{Server forks Worker 3}
-\end{aligned}
-\]
 
 
 
+\underline{Proof}
+
+In the continuation passing style, we can write the associativity property of \texttt{nondet} as:
 \equivalenceStatement{nondet}
 {
 if Fork() then
@@ -1040,35 +1248,63 @@ if Fork()
  else c
 }
 
-\noindent\textbf{LHS}
-\begin{flushleft}
-\renewcommand{\arraystretch}{1.3} % Adjust row spacing if necessary
-\begin{tabularx}{\textwidth}{l X}
-    (11) & $\equiv$ resume true ++ resume false [()/x, fun r $\rightarrow$ with nondet handle (if r then a else Fork()(s $\rightarrow$ if s then b else c)) / k] \\
-    (subst) & $\equiv$ (fun r $\rightarrow$ with nondet handle (if r then a else Fork()(s $\rightarrow$ if s then b else c))) true \\
-            & \quad ++ (fun r $\rightarrow$ with nondet handle (if r then a else Fork()(s $\rightarrow$ if s then b else c))) false \\
-    (8 + evaluate) & $\equiv$ with nondet handle a ++ with nondet handle Fork()(s $\rightarrow$ if s then b else c) \\
-    (11) & $\equiv$ a ++ (resume true ++ resume false [()/x, fun s $\rightarrow$ if s then b else c / k]) \\
-    (subst) & $\equiv$ a ++ ((fun s $\rightarrow$ if s then b else c) true) ++ ((fun s $\rightarrow$ if s then b else c) false) \\
-    (8 + evaluate) & $\equiv$ a ++ (b ++ c)
-\end{tabularx}
-\end{flushleft}
+\underline{Left Hand Side}
+\[
+\begin{array}{l}
+\quad \equiv \quad (11) \\[5pt]
+\textbf{resume }\text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \\ \text{ else Fork()}(s \rightarrow \textbf{if }  s \textbf{ then } b \textbf{ else } c)) \;/\; k] \\[5pt]
 
-\noindent\textbf{RHS}
+\quad \equiv \quad (\text{subst}) \\[5pt]
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{True} \\[2pt]
+\texttt{++} \\ 
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{False} \\[5pt]
 
-\begin{flushleft}
-\renewcommand{\arraystretch}{1.3} % Adjust row spacing if necessary
-\begin{tabularx}{\textwidth}{l X}
-    (11) & $\equiv$ resume true ++ resume false [()/x, fun r $\rightarrow$ with nondet handle (if r then Fork()(s $\rightarrow$ if s then a else b) else c) / k] \\
-    (subst) & $\equiv$ (fun r $\rightarrow$ with nondet handle (if r then Fork()(s $\rightarrow$ if s then a else b) else c)) true \\
-            & \quad ++ (fun r $\rightarrow$ with nondet handle (if r then Fork()(s $\rightarrow$ if s then a else b) else c)) false \\
-    (8 + evaluate) & $\equiv$ with nondet handle Fork()(s $\rightarrow$ if s then a else b) ++ with nondet handle c \\
-    (11) & $\equiv$ (resume true ++ resume false [()/x, fun s $\rightarrow$ if s then a else b / k]) ++ c \\
-    (subst) & $\equiv$ ((fun s $\rightarrow$ if s then a else b) true) ++ ((fun s $\rightarrow$ if s then a else b) false) ++ c \\
-    (8 + evaluate) & $\equiv$ ((fun s $\rightarrow$ if s then a else b) true) ++ ((fun s $\rightarrow$ if s then a else b) false) ++ c \\
-    (evaluate) & $\equiv$ (a ++ b) ++ c
-\end{tabularx}
-\end{flushleft}
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+\textbf{with } \text{nondet handle } a \;\texttt{++}\; \textbf{with } \text{nondet handle } \text{Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \\[5pt]
+
+\quad \equiv \quad (11) \\[5pt]
+a \;\texttt{++}\; (\text{resume True} \;\texttt{++}\; \text{resume False} \; [()/x,\; \text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c \;/\; k]) \\[5pt]
+
+\quad \equiv \quad (\text{subst}) \\[5pt]
+a \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{True} \\
+\texttt{++} \\
+(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{False} \\[5pt]
+
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+a \;\texttt{++}\; (b \;\texttt{++}\; c)
+\end{array}
+\]
+
+
+\underline{Right Hand Side}
+
+\[
+\begin{array}{l}
+\quad \equiv \quad (11) \\[5pt]
+\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()} \\(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;/\; k] \\[5pt]
+
+\quad \equiv \quad (\text{subst}) \\[5pt]
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;\text{True} \\
+\texttt{++} \\
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;\text{False} \\[5pt]
+
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+\textbf{with } \text{nondet handle } \text{Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \;\texttt{++}\; \textbf{with } \text{nondet handle } c \\[5pt]
+
+\quad \equiv \quad (11) \\[5pt]
+(\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b \;/\; k]) \;\texttt{++}\; c \\[5pt]
+
+\quad \equiv \quad (\text{subst}) \\[5pt]
+(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
+
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
+
+\quad \equiv \quad (\text{evaluate}) \\[5pt]
+(a \;\texttt{++}\; b) \;\texttt{++}\; c
+\end{array}
+\]
+
 
 \[
 \textbf{LHS} = \textbf{RHS} \quad \text{and} \quad a ++ (b ++ c) \equiv (a ++ b) ++ c
@@ -1079,107 +1315,149 @@ if Fork()
 Distributivity describes how two binary operation interact with one another. Formally, given three elements A,B,C and two binary operations $\diamond, \circ $
 
 \[
-(B \circ A) \diamond (C \circ A)  \equiv (B \diamond C) \circ A
+\begin{array}{l l}
+\text{Left Distributivity:} & A \diamond (B \circ C) \;\equiv\; (A \diamond B) \circ (A \diamond C) \\[5pt]
+\text{Right Distributivity:} &(A \diamond B) \circ C  \;\equiv\; (A \circ C) \diamond (B \circ C)
+\end{array}
 \]
+
+
 
 \subsubsection*{Right Distributivity}
 We can show that non determinism and sequencing (considered a binary operation \texttt{P;Q}) are right distributive within our system. 
 We can prove that the code:
 
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
 \begin{lstlisting}
-
-if Fork()
-    then P; R;
-    else Q; R;
+if Fork(){
+    P; 
+    R;
+}
+else{ 
+    Q; 
+    R;
 }
 \end{lstlisting}
-$\equiv$
+&
+&
 \begin{lstlisting}
-if Fork() 
-    then P;
-    else Q;
+if Fork(){ 
+    P;
+}
+else{
+    Q;
+}
 R;
 \end{lstlisting}
+\end{tabular}
+\end{table}
 
+\vspace{-2em}
 
-
+\underline{Proof}
 Expressing this property in the continuation passing style of our equivalence rules:
 
 \equivalenceStatement{nondet}{Fork()(t.(if t then P;R else Q;R) 
 }{nondet}{Fork()(t.(if t then P else Q); R)
 }
 
-\textbf{LHS}
+\underline{Left Hand Side}
 \[
 \begin{array}{l}
 
 \quad\equiv\quad (11) \\[5pt]
-\text{resume True} ++ \text{resume False} [()/x, \text{fun } t \rightarrow (\text{if } t \text{ then } P;R \text{ else } Q;R)/k] \\[5pt]
+\text{resume True} ++ \text{resume False} [()/x, \text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P;R \textbf{ else } Q;R)/k] \\[5pt]
 \quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } t \rightarrow (\text{if } t \text{ then } P;R \text{ else } Q;R)\ \text{True} \\[2pt]
-\quad ++ \\
-\text{fun } t \rightarrow (\text{if } t \text{ then } P;R \text{ else } Q;R)\ \text{False} \\[5pt]
+\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P;R \textbf{ else } Q;R)\ \text{True} \\[2pt]
+ \mathbin{++} 
+\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P;R \textbf{ else } Q;R)\ \text{False} \\[5pt]
 \quad\equiv\quad (8, \text{simplify}) \\[5pt]
 P;R  ++ Q;R \\[1em]
 \end{array}
 \]
 
-\textbf{RHS}
+\underline{Right Hand Side}
 \[
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
-\text{resume True} ++ \text{resume False} [()/x, \text{fun } t \rightarrow (\text{if } t \text{ then } P \text{ else } Q;R) / k] \\[5pt]
+\text{resume True} ++ \text{resume False} [()/x, \text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P \textbf{ else } Q;R) / k] \\[5pt]
 \quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } t \rightarrow (\text{if } t \text{ then } P \text{ else } Q);R\ \text{True} \\[2pt]
-\quad ++ \\
-\text{fun } t \rightarrow (\text{if } t \text{ then } P \text{ else } Q);R\ \text{False} \\[5pt]
+\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P \textbf{ else } Q);R\ \text{True} \\[2pt]
+\quad \mathbin{++} \\
+\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P \textbf{ else } Q);R\ \text{False} \\[5pt]
 \quad\equiv\quad (8, \text{simplify}) \\[5pt]
-(P;R) \\[2pt]
-\quad ++ \\
-(Q;R) \\[5pt]
-\quad\equiv\quad P;R ++ Q;R \\[1em]
+(P;R) \: \text{++} \:(Q;R) \\[5pt]
 \end{array}
 \]
-
 
 
 \subsubsection*{Left Distributivity}
 
 Unfortunately we can't show the same for left distributivity:
 
+\vspace{-2em}
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
 \begin{lstlisting}
 R;
-if Fork()
-    then P;
-    else Q;
+if Fork(){
+    P
+}
+else {
+    Q
 }
 \end{lstlisting}
-Is not equivalent to:
+&
+&
 \begin{lstlisting}
-if Fork()
-    then R; P; 
-    else R; Q; 
+if Fork(){
+    R; 
+    P;
+} 
+else{
+    R; 
+    Q; 
 }
 \end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-2em}
 This is because in the first example R is only executed once by the unforked process, whereas in the second example it is executed by both the parent and the child. 
 Mutation operations such as append(x) would be applied a different numbers of times breaking the equivalence.
 
-Whilst right distributivity does not hold in general, it does hold in the special case of idempotent effects, where repeated applications of R are equivalent to applying it once.
+Whilst left distributivity does not hold in general, it does hold in the special case of idempotent effects, where repeated applications of R are equivalent to applying it once.
 
+\vspace{-2em}
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
 \begin{lstlisting}
 set(x);
-if Fork()
-    then P;
-    else Q;
+if Fork(){
+    P;
+}
+else{
+    Q;
 }
 \end{lstlisting}
-$\equiv$
+&
+&
 \begin{lstlisting}
-if Fork()
-    then set(x); P;
-    else set(x); Q;
+if Fork(){
+    set(x); 
+    P;
+}
+else{ 
+    set(x); 
+    Q;
 }
 \end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-2em}
 
 
 \subsection*{Process Suspension and Resumption}
@@ -1190,31 +1468,33 @@ This next property is a specialisation of the absorption proof for exceptions sh
 
 
 \equivalenceStatement{nondet}
-{%
-\begin{aligned}
-    &\text{with status handle} \\
-    &\quad \text{if Fork() then exit(-1) else } b
-\end{aligned}
-}
+{if Fork() then exit(-1) else $b$}
 {nondet}
-{%
-\begin{aligned}
-    &-1 ++ (\text{with status handle } b)
-\end{aligned}
-}
+{-1 ++ (with status handle $b$)}
+
 
 \textbf{LHS}
-\begin{flushleft}
-\renewcommand{\arraystretch}{1.3} % Adjust row spacing for better readability
-\begin{tabularx}{\textwidth}{l X}
-    (11, \text{non det}) & $\equiv$ resume true ++ resume false [()/x, (fun r $\rightarrow$ with status handle (if r then exit() else b))] \\
-    (\text{subst}) & $\equiv$ (fun r $\rightarrow$ with status handle (if r then exit() else b)) true \\
-                   & \quad ++ (fun r $\rightarrow$ with status handle (if r then exit() else b)) false \\
-    (8 + simplify) & $\equiv$ with status handle (exit(-1)) ++ with status handle (b) \\
-    (11, \text{status}) & $\equiv$ x [-1/x, fun x $\rightarrow$ C / k] ++ with status handle (b) \\
-    (\text{subst}) & $\equiv$ -1 ++ with status handle (b)
-\end{tabularx}
-\end{flushleft}
+\[
+\begin{array}{l}
+\quad\equiv\quad (11,\; \text{non det}) \\[5pt]
+\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with status handle } (\textbf{if } r \text{ then exit()} \textbf{ else } b)] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{fun } r \rightarrow \textbf{with status handle } (\textbf{if } r \text{ then exit()} \textbf{ else } b)\; \text{True} \\
+\texttt{++} \\
+\text{fun } r \rightarrow \textbf{with status handle } (\textbf{if } r \text{ then} \text{ exit()} \textbf{ else } b)\; \text{False} \\[5pt]
+
+\quad\equiv\quad (8,\; \text{simplify}) \\[5pt]
+\textbf{with status handle } exit(-1) \;\texttt{++}\; \textbf{with status handle } b \\[5pt]
+
+\quad\equiv\quad (11,\; \text{status}) \\[5pt]
+x [-1/x,\; \text{fun } x \rightarrow C \;/\; k] \;\texttt{++}\; \textbf{with status handle } b \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+-1 \;\texttt{++}\; \textbf{with status handle } b
+\end{array}
+\]
+
 
 \[
 \textbf{LHS = RHS}
@@ -1225,100 +1505,112 @@ Reasoning about how multiple processes interact with shared state is vital to un
 
 Unix systems typically operate non-backtrackable file systems. The non determinism of programs introduces many problems for us to deal with, we can't trust which order processes (and their associated effects) will be executed. Since state isn't commutative this poses a large problem.
 
-We first examine how the order of our handlers affect how the system interprets the interaction between forking and state.
+We first examine how the order of our handlers affect how the system interprets the interaction between forking and state. We will prove they are not equivalent by showing a counter example:
+\[
+\begin{array}{l}
+\textbf{with } \mathit{nondet} \textbf{ handle } \\
+\quad \textbf{with } \mathit{state} \textbf{ handle } \\
+\quad\quad \text{Fork}()(r. \textbf{if } r \textbf{ then } set(True)(a.C_1) \textbf{ else } set(False)(b.C_2) \\[5pt]
+\not\equiv\quad  \\
+\textbf{with } \mathit{state} \textbf{ handle } \\
+\quad \textbf{with } \mathit{nondet} \textbf{ handle } \\
+\quad\quad \text{Fork}()(r. \textbf{if } r \textbf{ then } set(True)(a.C_1) \textbf{ else } set(False)(b.C_2) \\[5pt]
+\end{array}
+\]
 
-\subsubsection*{State Outer, Nondet Inner}
-This is the approach that Hillerström takes in his thesis to model the file system. This provides a persistent, global state which all processes can interact with. We demonstrate this by showing that set commands in the parent and child processes alter the same global state.
+\subsubsection*{Nondet Outer, State Inner}
+This approach provides a persistent, global state which all processes share. We demonstrate this by showing that set commands in the parent and child processes alter the same global state.
 
 
 
-\begin{verbatim}
-with state handle
-    with nondet handle
+\begin{lstlisting}
+with nondet handle
+    with state handle
         if Fork() then set(True) else set(False)
-\end{verbatim}
-
+\end{lstlisting}
 
 
 \[ 
 \begin{array}{l}
-
+\textbf{with } nondet \textbf{ handle} \\
+\quad\textbf{with } state \textbf{ handle} \\
+\quad\quad \text{Fork()(p.if p then set(True)(a.C) else get(False)(b.C))}
+\\
 \quad\equiv\quad (12) \\[5pt]
-\text{\textbf{with} nondet \textbf{handle}}\ \text{Fork()}(a.\ \text{\textbf{with} state \textbf{handle} } (\text{if } a \text{ then set(True)}(b.C) \text{ else set(False)}(d.E))) \\[5pt]
+\text{\textbf{with} nondet \textbf{handle}}\ \\ \quad \text{Fork()}(a.\ \text{\textbf{with} state \textbf{handle} } (\textbf{if } a \text{ then set(True)}(b.C) \text{ else set(False)}(d.E))) \\[5pt]
 \quad\equiv\quad (11) \\[5pt]
-\text{resume True} ++ \text{resume False} 
- [()/v, \text{fun } a \rightarrow \text{\textbf{with} state \textbf{handle} if } a \text{ then set(True)}(b.\text{get()}(c.D)) \text{ else set(False)}(d.\text{get()}(e.F))]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } a \rightarrow \text{\textbf{with} state if } a \text{ then set(True)}(b.\text{get()}(c.D) \text{ else set(False)}(d.\text{get()}(e.F)\ \text{True} \\
-++ \\
-\text{fun } a \rightarrow \text{\textbf{with} state \textbf{handle} if } a \text{ then set(True)}(b.\text{get()}(c.D) \text{ else set(False)}(d.\text{get()}(e.F)\ \text{False} \\[5pt]
+\text{\textbf{resume} True} \text{ ++ } \text{\textbf{resume} False} 
+\\ 
+\ [()/v, \text{fun } a \rightarrow  \text{\textbf{with} nondet,  state \textbf{handle} if } a \text{ then set(True)}(b.\text{get()}(c.D)) \text{ else set(False)}(d.\text{get()}(e.F))]
+\\ \quad\equiv\quad (\text{subst}) \\[5pt]
+\text{fun } a \rightarrow \text{\textbf{with} nondet, state} \textbf{ handle} \text{ if } a \text{ then set(True)}(b.\text{get()}(c.D) \text{ else set(False)}(d.C\ \text{True} \\
+\text{++} \\
+\text{fun } a \rightarrow \text{\textbf{with} nondet, state \textbf{handle} if } a \text{ then set(True)}(b.\text{get()}(c.D) \text{ else set(False)}(d.\text{get()}(e.F)\ \text{False} \\[5pt]
 \quad\equiv\quad (8, \text{simplify}) \\[5pt]
-\text{\textbf{with} state \textbf{handle} set(True)}(b.\text{get()}(c.D)) \\[2pt]
-\quad ++ \\  \text{\textbf{with} state set(False)}(d.\text{get()}(e.F)) \\[5pt]
+\text{\textbf{with} nondet, state \textbf{handle} set(True)}(b.\text{get()}(c.D)) \\[2pt]
+\text{++} \\  \text{\textbf{with} nondet, state \textbf{handle} set(False)}(d.\text{get()}(e.F)) \\[5pt]
 \quad\equiv\quad (11) \\[5pt]
-\text{fun } \_ \rightarrow (k\ ())\ s\ [\text{True}/s, \text{fun } b \rightarrow \text{\textbf{with} state \textbf{handle} get()}(c.D)] \\[2pt]
-\quad ++ \\ \text{fun } \_ \rightarrow (k\ ())\ s\ [\text{False}/s, \text{fun } d \rightarrow \text{\textbf{with} state \textbf{handle} get()}(e.F)] \\[5pt]
+\text{fun } \_ \rightarrow (k\ ())\ s\ [\text{True}/s, \text{fun } b \rightarrow \text{\textbf{with} nondet, state \textbf{handle} get()}(c.D)] \\[2pt]
+ \text{++} \\ \text{fun } \_ \rightarrow (k\ ())\ s\ [\text{False}/s, \text{fun } d \rightarrow \text{\textbf{with} nondet, state \textbf{handle} get()}(e.F)] \\[5pt]
 \quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } \_ \rightarrow (\text{fun } b \rightarrow \text{\textbf{with} state \textbf{handle} get()}(c.D))\ \text{True} \\[2pt]
-\quad ++ \\ \text{fun } \_ \rightarrow (\text{fun } d \rightarrow \text{\textbf{with} state \textbf{handle} get()}(e.F))\ \text{False} \\[5pt]
+\text{fun } \_ \rightarrow (\text{fun } b \rightarrow \text{\textbf{with} nondet, state \textbf{handle} get()}(c.D))\ \text{True} \\[2pt]
+ \text{++} \\ \text{fun } \_ \rightarrow (\text{fun } d \rightarrow \text{\textbf{with} nondet, state \textbf{handle} get()}(e.F))\ \text{False} \\[5pt]
 \quad\equiv\quad (11, \text{get state}) \\[5pt]
-\text{fun } \_ \rightarrow (\text{fun } s \rightarrow (k\ s)\ s\ [()/v, \text{fun } c \rightarrow \text{\textbf{with} state \textbf{handle} }D/k])\ \text{True} \\[2pt]
-\quad ++ \\ \text{fun } \_ \rightarrow (\text{fun } s \rightarrow (k\ s)\ s\ [()/v,  \text{fun } e \rightarrow \text{\textbf{with} state \textbf{handle} }F/k])\ \text{False} \\[5pt]
+\text{fun } \_ \rightarrow (\text{fun } s \rightarrow (k\ s)\ s\ [()/v, \text{fun } c \rightarrow \text{\textbf{with} nondet, state \textbf{handle} }D/k])\ \text{True} \\[2pt]
+ \text{++} \\ \text{fun } \_ \rightarrow (\text{fun } s \rightarrow (k\ s)\ s\ [()/v,  \text{fun } c \rightarrow \text{\textbf{with} nondet, state \textbf{handle} }F/k])\ \text{False} \\[5pt]
 \quad\equiv\quad (\text{application}) \\[5pt]
-\text{fun } \_ \rightarrow \text{\textbf{with} state \textbf{handle} } D[\text{True}/c]\ \text{True} \\
-++ \\
-\text{fun } \_ \rightarrow \text{\textbf{with} state \textbf{handle} } F[\text{False}/c]\ \text{False}
+\text{fun } \_ \rightarrow \text{\textbf{with} nondet, state \textbf{handle} } D[\text{True}/c]\ \text{True} \\
+\text{++} \\
+\text{fun } \_ \rightarrow \text{\textbf{with} nondet, state \textbf{handle} } F[\text{False}/c]\ \text{False}
 \end{array}
 \]
 
 
 
 
-\subsubsection*{Nondet Outer, State Inner}
+\subsubsection*{State Outer, Nondet Inner}
 
 Instead of global state, this handler configuration gives each process its own independent state. This state only exists for as long as the process is running. This is analogous to processes setting their own local variables or environment variables. 
 
-\begin{verbatim}
-with nondet handle
-    with status handle
+\begin{lstlisting}
+with state handle
+    with nondet handle
         if Fork() then set(True) else set(False)
-\end{verbatim}
+\end{lstlisting}
 
 
 
 \[
 \begin{array}{l}
+\textbf{with } state \textbf{ handle} \\
+\quad\textbf{with } nondet \textbf{ handle} \\
+\quad\quad \text{Fork()(p.if p then set(True)(a.C1) else set(False)(b.C2))}
+\\
 \quad\equiv\quad (11) \quad \\ 
-\text{\textbf{resume True}} ++ \text{\textbf{resume False}} \\[2pt]
-[()/v, \text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } p \text{ then set(True)}(a.C) \text{ else get(False)}(b.C)] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } p \text{ then set(True)}(a.C) \text{ else get()}(b.C)\ \text{True} \\[2pt]
-++ \\[2pt]
-\text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } p \text{ then set(True)}(a.C) \text{ else get()}(b.C)\ \text{False} \\[5pt]
+\textbf{with } state \textbf{ handle} \\
+ 
+\quad\textbf{resume } \text{True} \text{ ++ } \textbf{resume } \text{False} \\[2pt]
+[()/v, \text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } p \text{ then set(True)}(a.C1) \text{ else set(False)}(b.C2)] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt] 
+\textbf{with } state \textbf{ handle} \\
+\quad
+\quad\text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } p \text{ then set(True)}(a.C1) \text{ else set()}(b.C2)\ \text{True} \\[2pt]
+\quad \quad \text{ ++ } \\[2pt]
+\quad \quad \text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } p \text{ then set(True)}(a.C1) \text{ else set()}(b.C2)\ \text{False} \\[5pt]
 \quad\equiv\quad (8, \text{simplify}) \\[5pt]
-\text{\textbf{with} nondet \textbf{handle} set(True)}(a.C) \\[2pt]
-++ \\ \text{\textbf{with} nondet \textbf{handle} get()}(b.D) \\[5pt]
+\textbf{with } state \textbf{ handle} \\
+  
+\quad \text{\textbf{with} nondet \textbf{handle} set(True)}(a.C1) \\[2pt]
+\quad\text{ ++ } \\ 
+\quad\text{\textbf{with} nondet \textbf{handle} set()}(b.C2) \\[5pt]
 \quad\equiv\quad (12) \\[5pt]
-\text{set(True)}(a.\text{\textbf{with} nondet \textbf{handle} } C) \\[2pt]
-++ \\ \text{get()}(b.\text{\textbf{with} nondet \textbf{handle} } D) \\[5pt]
-(\text{Scheduler executes processes sequentially}) \\[5pt]
-\text{set(True)}(a.\text{\textbf{with} nondet \textbf{handle} get()}(b. \text{\textbf{with} nondet \textbf{handle} } D)) \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-\text{fun } \_ \rightarrow (k\ ())\ s\ [\text{True}/s, \text{fun } a \rightarrow \text{\textbf{with} nondet \textbf{handle} get()}(b. \text{\textbf{with} nondet \textbf{handle} } C) / k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } \_ \rightarrow ( ( \text{fun } a \rightarrow \text{\textbf{with} nondet \textbf{handle} get()}(b. \text{\textbf{with} nondet \textbf{handle} } D) ())\ s) \\[5pt]
-\quad\equiv\quad (8, \text{discard } a) \\[5pt]
-\text{fun } \_ \rightarrow (\text{\textbf{with} nondet \textbf{handle} get()}(b. \text{\textbf{with} nondet \textbf{handle} } C)) \text{ True} \\[5pt]
-\quad\equiv\quad (12) \\[5pt]
-\text{fun } \_ \rightarrow \text{get()}(b. \text{\textbf{with} nondet \textbf{handle} } C) \text{ True} \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-\text{fun } \_ \rightarrow \text{fun } s \rightarrow (k s) s [ ()/v, \text{fun } y \rightarrow \text{get()}(b.\text{\textbf{with} nondet \textbf{handle} } C)/k] \text{ True} \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } \_ \rightarrow \text{fun } s \rightarrow ((\text{fun } y \rightarrow \text{get()}(b.\text{\textbf{with} nondet \textbf{handle} } C) s) s \text{ True}) \\[5pt]
-\quad\equiv\quad (\text{apply}) \\[5pt]
-\text{fun } \_ \rightarrow \text{fun } y \rightarrow ( \text{get()}(b.\text{\textbf{with} nondet \textbf{handle} } C )\text{ True} \\[5pt]
-\quad\equiv\quad (8) \\[5pt]
-\text{fun } \_ \rightarrow \text{get()}(b.\text{\textbf{with} nondet \textbf{handle} } C[\text{True}/y]) \\[5pt]
+
+\textbf{with } state \textbf{ handle} \\
+\quad \text{set(True)}(a.\text{\textbf{with} nondet \textbf{handle} } C1) 
+\quad \\[2pt]
+\quad \text{ ++ } \\ 
+\quad \text{set(False)}(b.\text{\textbf{with} nondet \textbf{handle} } C2) \\[5pt]
+ 
 \end{array}
 \]
 
@@ -1331,7 +1623,7 @@ with nondet handle
 
 \subsection*{Interaction With Environment Variables}
 According to the Unix specifications, when a child is forked from its parent, it inherits some of the parent's state including environment variables. However from this point onwards the environments are separate and changes to the child's environment variable shouldn't affect the parent's and vice versa.
-
+1
 
 
 \subsubsection*{The Child Inherits the Parent's Environment Variables}
@@ -1352,14 +1644,15 @@ else {
 \end{lstlisting}
 
 
-\equivalenceStatement{nondet}
-{%
-\begin{aligned}
-    &\text{with sessionmgr(Root) handle} \\
-    &\quad \text{ Fork()(r.(if r then (su; whoami()) else whoami()))}
-\end{aligned}
-}
-{}
+\[
+\begin{array}{l}
+\textbf{with } \mathit{nondet} \textbf{ handle } \\
+\quad \textbf{with } \mathit{sessionmgr(Root)} \textbf{ handle } \\
+\quad\quad \text{Fork}()(r. \textbf{if } r \textbf{ then } (su; \textit{whoami}()) \textbf{ else } \textit{whoami}()) \\[5pt]
+\quad\equiv\quad (11) \\
+\ldots
+\end{array}
+\]
 
 
 
@@ -1379,7 +1672,6 @@ else {
 \end{tabularx}
 \end{flushleft}
 
-\textbf{RHS}
 
 \section{Pipe}
 Pipes are a data stream abstraction that enables communication between processes. The pipe command creates two file descriptors; a read end and a write end. In a typically shell comand \texttt{A|B}, the shell forks two processes A | B, it redirects A stdout to the write end (stdout) of the pipe and it redirects B's stdin the read end (stdin) of the pipe. 
@@ -1395,7 +1687,86 @@ Piping can be seen as a form of function composition, if we consider the process
 \end{itemize}
 
 
+\section*{Process Synchronisation}
 
+
+
+This proof shows how \texttt{wait} interacts with \texttt{fork}. Both resumptions produced by the \texttt{pid\_nondet} handler perform a \texttt{wait}. In the parent process, \texttt{wait(pid)} refers to the child and corresponds to a standard blocking operation. In the child process, \texttt{Fork()} returns \texttt{0} to indicate that it is the newly created process. Since there is no process with PID \texttt{0} in the queue, \texttt{wait(0)} has no effect and acts as a no-op, returning \texttt{()}.
+
+\vspace{-2em}
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+\begin{lstlisting}
+p = Fork();
+Wait(p);
+if p
+    C1
+else
+    C2
+\end{lstlisting}
+&
+&
+\begin{lstlisting}
+p = Fork();
+if p
+    Wait(p);
+    C1
+else
+    C2
+\end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-2em}
+
+\underline{Proof}
+
+\underline{Left Hand Side}
+\[
+\begin{array}{l}
+Fork ()(y.\ \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)) \\[5pt]
+
+\quad\equiv\quad (11) \\[2pt]
+\textbf{resume } 0\ \text{++}\ \textbf{resume } \mathit{pid} \ [()/v,\ \textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)\ /\ \textbf{resume} ] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[2pt]
+\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)\ 0 \\[2pt]
+\text{++} \\[2pt]
+\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)\ \mathit{pid} \\[5pt]
+
+\quad\equiv\quad (\text{application}) \\[2pt]
+\textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(0)(z.\ \textbf{if } 0\ \textbf{then } C_1\ \textbf{else } C_2) \\[2pt]
+\text{++} \\[2pt]
+\textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(\mathit{pid})(z.\ \textbf{if } \mathit{pid}\ \textbf{then } C_1\ \textbf{else } C_2) \\[5pt]
+
+\quad\equiv\quad (5,6) \\[2pt]
+\textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(0)(z.\ C_2)\ \text{++}\ \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(\mathit{pid})(z.\ C_1) \\[5pt]
+\end{array}
+\]
+
+
+\underline{Right Hand Side}
+\[
+\begin{array}{l}
+\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{Fork}()(y.\ \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\ \textbf{else } C_2) \\[5pt]
+
+\quad\equiv\quad (11) \\[2pt]
+\textbf{resume } 0\ \text{++}\ \textbf{resume } \mathit{pid} \ [()/v,\ \textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\  \textbf{else } C_2\ /\ \textbf{resume} ] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[2pt]
+\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\ \textbf{else } C_2\  \ 0 \\[2pt]
+\text{++} \\[2pt]
+\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\ \textbf{else } C_2\ \mathit{pid} \\[5pt]
+
+\quad\equiv\quad (\text{application}) \\[2pt]
+\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } 0 \ \textbf{then } \text{Wait}(0)(z.C_1) \ \textbf{else } C_2 \\[2pt]
+\text{++} \\[2pt]
+\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } \mathit{pid} \ \textbf{then } \text{Wait}(\mathit{pid})(z.C_1)\ \textbf{else } C_2 \\[5pt]
+
+\quad\equiv\quad (5,6) \\[2pt]
+\textbf{with } \mathit{pid\_nondet} \textbf{ handle } C_2\ \text{++}\ \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \text{Wait}(\mathit{pid})(z.C_1) \\[5pt]
+\end{array}
+\]
 
 
 \chapter{Conclusions}
