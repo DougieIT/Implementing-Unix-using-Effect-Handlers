@@ -884,7 +884,7 @@ We will use these equivalences to:
 \section{Simplified State Proofs}
 \subsection{Single Cell State}
 \label{subsec:simplified-state}
-We begin by reasoning about a minimal model of state, consisting of a single global cell and get and set operations. These handlers were taken from Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. Although this model is deliberately simple, the reasoning principles it demonstrates are general. We will see that the same basic properties of state we prove here arise in more complex examples later on.
+We begin by reasoning about a minimal model of state, consisting of a single global cell and get and set operations. These handlers were taken from Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. Although this model is deliberately simple, the reasoning principles it demonstrates are general. We will see that the same basic properties of state we prove here arise in more complex examples later on.  
 
 \handlerDef{state}{
     &\text{get}(\_, k) \mapsto \text{fun s} \rightarrow (k\ s)\ s \\
@@ -892,10 +892,13 @@ We begin by reasoning about a minimal model of state, consisting of a single glo
     &\text{return}\ x \mapsto \text{fun } \_ \rightarrow \text{return } x 
 }
 
-We use this handler to prove four basic state properties. These proofs are the minimum set needed to capture the basic behaviour of state, as they allow us to reason about any sequence of get and sets.
+To briefly explain this handler, the get operation returns a function which is parametrised by the current state \lstinline{s}. It takes this value of state into the continuation \lstinline{k}. This provides a return value to the get operation in the continuation \lstinline{k}. The second \lstinline{s} in the function body rethreads the current state back into the continuation, without this second application, state would not be preserved for subsequent operations. 
+The set clause returns a function that takes a parameter, representing the prior state, but immediately discards it. Since we are working within a single-cell state model, the previous state is irrelevant as it is about to be overwritten by the new state value. The continuation is applied to () (as a set operation returns no meaningful result), and the resulting computation is run under the new state \lstinline{s}, thereby establishing \lstinline{s} as the current state for the rest of the computation.
+
+We use this handler to establish four fundamental state laws. These form a minimal basis for reasoning about state, capturing the essential behaviour of get and set, and allowing us to reason algebraically about arbitrary sequences of state operations.
 
 \subsubsection*{Idempotence of Set}
-The last set overwrites the first one:
+Performing consecutive \lstinline{set} operations retains only the final update, as each invocation completely overwrites the current state:
 \[
 \begin{aligned}
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
@@ -942,7 +945,7 @@ The last set overwrites the first one:
 LHS $\equiv$ RHS
 
 \subsubsection*{Idempotence of Get}
-Reading the state twice in a row gives the same result as reading it once.
+Reading the state multiple times without an intervening \lstinline{set} yields the same result each time. Repeating a get operation without modifying the state in between has no observable effect on the computation.
 
 
 \[
@@ -994,8 +997,8 @@ LHS $\equiv$ RHS
 
 
 
-\subsubsection*{Get-After-Set}
-Reading the state immediately after setting it returns the new value.
+\subsubsection*{Set-Then-Get}
+Reading the state immediately after setting it yields the value that was just written. This property ensures that state updates are immediately observable.
 \[
 \begin{aligned}
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
@@ -1040,7 +1043,9 @@ Reading the state immediately after setting it returns the new value.
 
 
 
-\subsubsection*{Set-After-Get}
+\subsubsection*{Get-Then-Set}
+A \lstinline{get} followed by a \lstinline{set}, updates the state with a new value whilst preserving the former state value by binding it in the continuation. 
+
 
 \[
 \begin{aligned}
@@ -1085,45 +1090,65 @@ Reading the state immediately after setting it returns the new value.
 LHS $\equiv$ RHS
 
 \subsection{Multi-Cell State}
-We can easily generalise this to a multicell example using a map data structure: 
+Unfortunately attempting to reason about the state model directly in Hillerström's thesis proved to be too complicated. Interacting with the file system involved functions that used; Directory, I-List, Data Region and all their associated helper functions made reasoning too complicated to be practical. 
+
+This simplified system is less accurate to Unix than Hillerström's "Tiny Unix" but maintains the key functionality (however it loses file linking functionality). From now on we will attempt to reason about how state will interact with other features in our system such as nondeterminism and concurrency. 
+
+This handler for multi-cell state generalises the single-cell model we introduced earlier, replacing the implicit single memory cell with an explicit key-value map. The \lstinline{multiState} handler works in much the same way as the previous one. The main difference is that we expect \lstinline{s} to be a map rather than a single-value. Also note that, in the set case, we use the parameter s, we can no longer discard the current state as we want to update a single key-value pair, not completely overwrite the previous mappings. Both lookup and update are parametrised by the current state, \lstinline{s}.
 
 \[
-\text{multiState} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
+\text{state} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
 \begin{array}{ll}
 \text{get}(k_0; k) &\mapsto \text{fun } s \mapsto \text{let } v = \text{lookup}(k_0, s) \text{ in } (k\ v)\ s \\
-\text{set}(k_0, v; k) &\mapsto \text{fun } s \mapsto \text{let s'} = \text{update}([k_0 := v],\ s) \text{ in } (k\ ())\ s'\ \\
+\text{set}(k_0, v; k) &\mapsto \text{fun } s \mapsto \text{let s'} = \text{update}([k_0:=v],s) \text{ in } (k\ ())\ s'\ \\
 \text{return } x &\mapsto \text{fun } \_ \mapsto \text{return } x
 \end{array}
 \right\}
 \]
 
-This gives us an additional property, the commutativity of operations on disjoint keys. To prove this we need to show the following properties hold:
+
+In addition to the properties that held in the single-cell state model, which hold for each key independently, the multicell model allows us to derive additional algebraic properties: commutativity of operations on disjoint keys. These properties capture the algebraic independence of effects targeting separate parts of the state and are formalised by the following equivalences:
 \begin{enumerate}
     \item Disjoint Write-Write Commutativity
     \[set(k1,v1);set(k2,v2) \equiv set(k2,v2);set(k1,v1)\] 
     \item Disjoint Write-Read Independence
         \[set(k1,v1);get(k2) \equiv get(k2);set(k1,v1)\] 
-
     \item Disjoint Read-Read Commutativity
         \[get(k1);get(k2) \equiv get(k2);get(k1)\] 
-
 \end{enumerate}
 
+These properties are vital as they allow for reasoning about different parts of the system to be treated independently. This kind of modular reasoning is particularly important in the presence of nondeterminism and concurrency, where operations may execute in varying orders.
+
+\section{Process Forking - Non Determinism}
+Process forking introduces nondeterministic branching into our system which exhibits a number of interesting algebraic properties. By first establishing these properties in isolation we provide a basis for understanding how forking composes with other effects. In subsequent sections we will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
 
 
-\section{Process Forking}
-Process forking introduces a number of interesting properties for us to consider. Establishing these properties when it is alone provides a base for us to reason about how it interacts upon composition. Then we will go on to analyse how they compose with other handlers. We will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
+\[
+\text{nondet} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
+\begin{array}{ll}
+\text{Fork}() &\mapsto \text{\textbf{resume} True ++ \textbf{resume} False} \\
 
-When a process forks it introduces two suspended resumptions. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system.
+\textbf{return } x &\mapsto \textbf{return } [x]
+\end{array}
+\right\}
+\]
 
+Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system.
 
-\subsection*{Associativity}
-Associativity is a fundamental algebraic property that states the grouping of operations in an expression will not change the final result: 
+\subsection*{Associativity of Forking}
+Associativity is a core structural law of algebraic operations, stating that the grouping of operations does not affect the overall behaviour of a computation.
+
 \[
 (A \oplus B) \oplus C \quad \equiv \quad A \oplus (B \oplus C)
 \]
-In this context, the order in which fork operations are grouped does not matter, the observable behaviour, i.e. the set of possible executions remains the same. This means that the following code is equivalent:
-\begin{table}[h]
+In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
+
+
+\begin{figure}[H]
+    \centering
+
+
+\begin{table}[H]
 \centering
 \begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
 \begin{lstlisting}
@@ -1158,30 +1183,38 @@ else{
 \end{table}
 \vspace{-2em}
 
-This is an important property to prove for parallel programming purposes. It allows us as programmers to rearrange or simplify complex nesting structures. This can make it clearer where we can introduce interrupts to allow for tree-based parallelism.
-For example, if we knew that workers were indepedent of each other, restructuring the following code:
+    \caption{Equivalent code structures under associative forking}
+    \label{fig:enter-label}
+\end{figure}
 
+
+
+
+Structural properties describe how computations may be grouped and rearranged without changing the meaning of a program. This makes them especially useful for restructuring code, as they allow us to transform the shape of a program without affecting its behaviour. In particular, associativity enables us to restructure nested control flows, revealing opportunities for parallel execution. This facilitates tree-based parallel execution, allowing nested computations to be restructured into balanced, parallel-friendly forms.
+
+For example, if we knew that workers were independent of each other, restructuring the following code:
 \vspace{-1em} % reduce space above table
-\begin{table}[h]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-Server forks Worker 1
-    Worker 1 forks Worker 2
-        Worker 2 forks Worker 3
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
+\begin{figure}[H]
+    \centering
+    \begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+        \begin{lstlisting}
 Server forks Worker 1
 Server forks Worker 2
 Server forks Worker 3
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-1em} % reduce space below table
-could allow us to see more easily where we could place interrupts to allow for parallelisation.
+        \end{lstlisting}
+        &
+        &
+        \begin{lstlisting}
+Server forks Worker 1
+    Worker 1 forks Worker 2
+        Worker 2 forks Worker 3
+        \end{lstlisting}
+    \end{tabular}
+    \vspace{-1em} % reduce space below table
 
+    \caption{Equivalent flat and nested process structures.}
+    \label{fig:process-restructuring}
+\end{figure}
 
 
 
@@ -1258,7 +1291,7 @@ a \;\texttt{++}\; (b \;\texttt{++}\; c)
 \quad \equiv \quad (\text{subst}) \\[5pt]
 (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
 
-\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt] 
 (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
 
 \quad \equiv \quad (\text{evaluate}) \\[5pt]
@@ -1394,8 +1427,7 @@ Mutation operations such as append(x) would be applied a different numbers of ti
 
 
 \section{State Models and Handler Composition}
-In the previous section we demonstrated algebraic reasoning about state in a simplified purely sequential setting. In this section introduce nondeterminism via process forking, introducing concurrent executions. 
-The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. 
+In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. 
 
 We obtain two different models of state depending on this ordering:
 \begin{itemize}
@@ -1736,6 +1768,10 @@ else{
 \end{tabular}
 \end{table}
 \vspace{-2em}
+
+
+\subsection{Summary of Properties Under Composition}
+
 
 \section{Exceptions}
 Processes can terminate successfully by running to completion, or they can terminate by performing an exit system call. The exit call takes a numeric argument indicating the exit status of the process. Unlike other operations exit does not allow for continuation, it discards the remaining computation and terminates execution immediately.
