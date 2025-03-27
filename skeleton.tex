@@ -8,9 +8,11 @@
 \usepackage{listings}
 \usepackage{comment}
 \usepackage{amsmath}
-\usepackage{tcolorbox}
+\usepackage[most]{tcolorbox}
 \usepackage{tabularx} % Include this in the preamble
 \usepackage{float}
+\usepackage{longtable}
+
 
 \usepackage{amssymb}
 \input{commands.tex}
@@ -51,6 +53,8 @@
     fonttitle=\bfseries,
     title={Example},
     sharp corners,
+    breakable,
+    enhanced jigsaw
   }
 }
 
@@ -375,45 +379,6 @@ fun env( user : user, action : () -> <whoami|e> a ) : e a
 Env is a handler parameterised by the current user, which simply wraps the resumption it is supposed to have scope for, which would represent a process, and returns this value when queried. 
 
 session-mgr manages user switches by wrapping the continuation in a new \texttt{env} handler. This provides greater modularity than global variables as the state is entirely encapsulated by the handler. This is very useful in the next, section which is concerned with process forking.
-
-
-\subsection*{Interaction With Exit}
-This next property is a specialisation of the absorption proof for exceptions shown earlier.
-
-
-\equivalenceStatement{nondet}
-{if Fork() then exit(-1) else $b$}
-{nondet}
-{-1 ++ (with status handle $b$)}
-
-
-\textbf{LHS}
-\[
-\begin{array}{l}
-\quad\equiv\quad (11,\; \text{non det}) \\[5pt]
-\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with status handle } (\textbf{if } r \text{ then exit()} \textbf{ else } b)] \\[5pt]
-
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } r \rightarrow \textbf{with status handle } (\textbf{if } r \text{ then exit()} \textbf{ else } b)\; \text{True} \\
-\texttt{++} \\
-\text{fun } r \rightarrow \textbf{with status handle } (\textbf{if } r \text{ then} \text{ exit()} \textbf{ else } b)\; \text{False} \\[5pt]
-
-\quad\equiv\quad (8,\; \text{simplify}) \\[5pt]
-\textbf{with status handle } exit(-1) \;\texttt{++}\; \textbf{with status handle } b \\[5pt]
-
-\quad\equiv\quad (11,\; \text{status}) \\[5pt]
-x [-1/x,\; \text{fun } x \rightarrow C \;/\; k] \;\texttt{++}\; \textbf{with status handle } b \\[5pt]
-
-\quad\equiv\quad (\text{subst}) \\[5pt]
--1 \;\texttt{++}\; \textbf{with status handle } b
-\end{array}
-\]
-
-
-\[
-\textbf{LHS = RHS}
-\]
-
 
 \section{Multi-Process System}
 \subsection*{Forking}
@@ -879,10 +844,10 @@ We will use these equivalences to:
 
 
 
+\section{Single-Cell State Proofs}
 
+\subsection{Simplified single-cell state}
 
-\section{Simplified State Proofs}
-\subsection{Single Cell State}
 \label{subsec:simplified-state}
 We begin by reasoning about a minimal model of state, consisting of a single global cell and get and set operations. These handlers were taken from Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. Although this model is deliberately simple, the reasoning principles it demonstrates are general. We will see that the same basic properties of state we prove here arise in more complex examples later on.  
 
@@ -896,6 +861,865 @@ To briefly explain this handler, the get operation returns a function which is p
 The set clause returns a function that takes a parameter, representing the prior state, but immediately discards it. Since we are working within a single-cell state model, the previous state is irrelevant as it is about to be overwritten by the new state value. The continuation is applied to () (as a set operation returns no meaningful result), and the resulting computation is run under the new state \lstinline{s}, thereby establishing \lstinline{s} as the current state for the rest of the computation.
 
 We use this handler to establish four fundamental state laws. These form a minimal basis for reasoning about state, capturing the essential behaviour of get and set, and allowing us to reason algebraically about arbitrary sequences of state operations.
+
+\begin{itemize}
+    \item Set-Set 
+    \item Set-Get
+    \item Get-Set
+    \item Get-Get
+\end{itemize}
+
+As these proofs take up a lot of space, in the interest of brevity, we will only show one example here. The complete set of proofs are attached in appendice \ref{full-simplified-single-cell-state-proof} 
+
+\subsubsection*{Idempotence of Set}
+Performing consecutive \lstinline{set} operations retains only the final update, as each invocation completely overwrites the current state:
+\[
+\begin{aligned}
+    &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
+    &\quad \operatorname{set} \; a \; (x. \operatorname{set} \; b \; (y. C)) \\
+    &\equiv \\
+    &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
+    &\quad \operatorname{set} \; b \; (y. C)
+\end{aligned}
+\]
+
+\underline{Left Hand Side}
+
+
+\begin{align*}
+&\equiv\quad (11) \\
+&\text{fun } \_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \textbf{with state handle } set(b)(y.C)/k] \\
+&\equiv\quad (\text{subst}) \\
+&\text{fun } \_ \rightarrow ((\text{fun } x \rightarrow \textbf{with state handle } set(b)(y.C))\ ())\ a \\
+&\equiv\quad (8) \\
+&\text{fun } \_ \rightarrow (\textbf{with state handle } set(b)(y.C))\ a \\
+&\equiv\quad (11) \\
+&\text{fun } \_ \rightarrow (\text{fun } \_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \textbf{with state handle } C/k])\ a \\
+&\equiv\quad (\text{subst}) \\
+&\text{fun } \_ \rightarrow (\text{fun } \_ \rightarrow (\text{fun } y \rightarrow \textbf{with state handle } C)\ ())\ b)\ a \\
+&\equiv\quad (8) \\
+&\text{fun } \_ \rightarrow (\text{fun } \_ \rightarrow (\textbf{with state handle } C)\ b)\ a \\
+&\equiv\quad (\text{application}) \\
+&\text{fun } \_ \rightarrow (\textbf{with state handle } C)\ b
+\end{align*}
+
+
+\[ 
+\begin{array}{l}
+\quad\equiv\quad (11) \\[5pt]
+\text{fun }\_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C)/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{fun }\_ \rightarrow ((\text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ ())\ a \\[5pt]
+\quad\equiv\quad (8) \\[5pt]
+\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ a \\[5pt]
+\quad\equiv\quad (11) \\[5pt]
+\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C/k])\ a \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (\text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C)\ ())\ b)\ a \\[5pt]
+\quad\equiv\quad (8) \\[5pt]
+\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } C)\ b)\ a \\[5pt]
+\quad\equiv\quad (\text{application}) \\[5pt]
+\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } C)\ b
+\end{array}
+\]
+
+\underline{Right Hand Side}
+\[ 
+\begin{array}{l}
+\quad\equiv\quad (11) \\[5pt]
+\text{fun }\_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{fun }\_ \rightarrow ((\text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C)\ ())\ b \\[5pt]
+\quad\equiv\quad (8) \\[5pt]
+\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } C)\ b
+\end{array}
+\]
+
+LHS $\equiv$ RHS
+
+
+
+\subsection{Verifying the implementation of environment variables}
+This simplified model provides us with a great way to verify the concrete implementation of environment variables in our system. These handlers form an example of single-cell state where the operations Su(user) corresponds to set(x) and Ask() corresponds to get:
+
+\[
+ \text{sessionmgr} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=} \;
+ \text{env} \langle \mathit{u}, (\lambda \langle \rangle.\; \textbf{handle}\; m \langle \rangle\; \textbf{with}  \{ 
+ \begin{array}{ll}
+   \textbf{return}\; res & \mapsto res \\
+   \!\langle \text{Su}\; \mathit{u'} \Rightarrow \textbf{resume} \!\rangle & \mapsto \text{env} \langle \mathit{u'}, \textbf{resume} \rangle
+ \end{array}
+ \} \rangle 
+ \]
+\[
+\begin{array}{l}
+\\
+\text{env} \langle \mathit{user}, m \rangle \;\overset{\mathrm{def}}{=} \;
+\textbf{handle}\; m \langle \rangle\; \textbf{with} \left\{
+\begin{array}{ll}
+\textbf{return}\; res  \mapsto res \\
+\langle \text{Ask} \langle \rangle \Rightarrow \textbf{resume} \rangle  \mapsto \\
+\quad\quad\quad\quad\quad\textbf{case}\; \mathit{user}\; \left\{
+\begin{array}{ll}
+\text{Alice} & \mapsto \textbf{resume}\; \text{"alice"} \\
+\text{Bob} & \mapsto \textbf{resume}\; \text{"bob"} \\
+\text{Root} & \mapsto \textbf{resume}\; \text{"root"}
+\end{array}
+\right.
+\end{array}
+\right\}
+\end{array}
+\]
+
+State is implemented somewhat differently in this system, instead of being passed as a parameter into each continuation it uses an approach called dynamic binding. The environment is not passed explicitly, instead it is scoped dynamically by the handler itself. This allows dynamic scoping where the same variable can be bound to different values in different contexts in during execution. We will see how this becomes useful later on in the context of process management, but for now we will verify that this implementation follows the same state laws as before.
+
+\begin{itemize}
+    \item Su-Su
+    \item Su-Ask
+    \item Ask-Su
+    \item Ask-Ask
+\end{itemize}
+    
+
+We provide one example here and attach the rest in the appendices \ref{environment-variable-proofs}
+\subsubsection*{Su(user\_j) Su(user\_k)}
+\[
+\begin{array}{l}
+\textbf{sessionmgr} \langle \mathit{user}_i,\; \textbf{Su}(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C)) \rangle \\[5pt]
+
+\quad\equiv\quad (\text{apply}) \\[5pt]
+\textbf{with }\text{}\text{env} \langle \mathit{user}_i \rangle\; \textbf{handle} \\
+\quad\textbf{with session handle}\; \textbf{Su}(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C)) \\[5pt]
+
+\quad\equiv\quad (11) \\[5pt]
+\textbf{with }\text{env} \langle \mathit{user}_i \rangle\; \textbf{handle} \\
+\quad\textbf{}\text{env} \langle \mathit{user}',\; m \rangle\; [\mathit{user}_j/\mathit{user}',\; \text{fun } x \rightarrow \textbf{with session handle}\; \textbf{Su}(\mathit{user}_k)(y.C)/m] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\textbf{with }\text{env} \langle \mathit{user}_i \rangle\; \textbf{handle} \\
+\quad\textbf{with }\text{env} \langle \mathit{user}_j \rangle\; \textbf{handle} \\
+\qquad\textbf{with session handle}\; \textbf{Su}(\mathit{user}_k)(y.C) \\[5pt]
+
+\quad\equiv\quad (11) \\[5pt]
+\textbf{with }\text{env} \langle \mathit{user}_i \rangle\; \textbf{handle} \\
+\quad\textbf{with }\text{env} \langle \mathit{user}_j \rangle\; \textbf{handle} \\
+\qquad\textbf{}\text{env} \langle \mathit{user}',\; m \rangle\; [\mathit{user}_k/\mathit{user}',\; \text{fun } y \rightarrow \textbf{with session handle}\; C/m] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\textbf{with }\text{env} \langle \mathit{user}_i \rangle\; \textbf{handle} \\
+\quad\textbf{with }\text{env} \langle \mathit{user}_j \rangle\; \textbf{handle} \\
+\qquad\textbf{with }\text{env} \langle \mathit{user}_k \rangle\; \textbf{handle}\; C
+\end{array}
+\]
+
+
+
+\section{Multi-Cell State}
+
+
+\subsection{Simplified Multicell State}
+
+This simplified system is less accurate to Unix than Hillerström's "Tiny Unix" but maintains the key functionality (however it loses file linking functionality). From now on we will attempt to reason about how state will interact with other features in our system such as nondeterminism and concurrency. 
+
+This handler for multi-cell state generalises the single-cell model we introduced earlier, replacing the implicit single memory cell with an explicit key-value map. The \lstinline{multiState} handler works in much the same way as the previous one. The main difference is that we expect \lstinline{s} to be a map rather than a single-value. Also note that, in the set case, we use the parameter s, we can no longer discard the current state as we want to update a single key-value pair, not completely overwrite the previous mappings. Both lookup and update are parametrised by the current state, \lstinline{s}.
+
+\[
+\text{state} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
+\begin{array}{ll}
+\text{get}(k_0; k) &\mapsto \text{fun } s \mapsto \text{let } v = \text{lookup}(k_0, s) \text{ in } (k\ v)\ s \\
+\text{set}(k_0, v; k) &\mapsto \text{fun } s \mapsto \text{let s'} = \text{update}([k_0:=v],s) \text{ in } (k\ ())\ s'\ \\
+\text{return } x &\mapsto \text{fun } \_ \mapsto \text{return } x
+\end{array}
+\right\}
+\]
+
+
+In addition to the properties that held in the single-cell state model, which hold for each key independently, the multicell model allows us to derive additional algebraic properties: commutativity of operations on disjoint keys. These properties capture the algebraic independence of effects targeting separate parts of the state and are formalised by the following equivalences:
+\begin{enumerate}
+    \item Disjoint Write-Write Commutativity
+    \[set(k1,v1);set(k2,v2) \equiv set(k2,v2);set(k1,v1)\] 
+    \item Disjoint Write-Read Independence
+        \[set(k1,v1);get(k2) \equiv get(k2);set(k1,v1)\] 
+    \item Disjoint Read-Read Commutativity
+        \[get(k1);get(k2) \equiv get(k2);get(k1)\] 
+\end{enumerate}
+
+These properties are vital as they allow for reasoning about different parts of the system to be treated independently. This kind of modular reasoning is particularly important in the presence of nondeterminism and concurrency, where operations may execute in varying orders.
+
+
+\subsection{Verifying Tiny Unix's File System}
+Unfortunately attempting to reason about the state model directly in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply equational reasoning techniques, each small step in the computation rapidly branched out due to the way different layers of the file system, directories, inodes, and data blocks, depended on one another.Unlike in the simplified examples, reasoning about the serial file system's correctness depended on the interaction between multiple nested data structures, namely; the Directory, the i-node list, the data region. 
+
+Each structure relied on invariants maintained by the others: directory entries had to point to valid i-nodes, i-nodes had to reference valid and allocated data blocks, and all pointers needed to remain consistent throughout execution. This tight coupling made it difficult to reason about each component in isolation.
+
+Performing operations such as file writing or creation involved updating global state which involved multiple layers of functions and handlers including get, put, lookup, modify, fileRW, fopen, fwrite, withDefault etc.The need to thread through and update each of these components made algebraic reasoning impractical.
+
+
+\section{Process Forking - Non Determinism}
+Process forking introduces nondeterministic branching into our system which exhibits a number of interesting algebraic properties. By first establishing these properties in isolation we provide a basis for understanding how forking composes with other effects. In subsequent sections we will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
+
+
+\[
+\text{nondet} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
+\begin{array}{ll}
+\text{Fork}() &\mapsto \text{\textbf{resume} True ++ \textbf{resume} False} \\
+
+\textbf{return } x &\mapsto \textbf{return } [x]
+\end{array}
+\right\}
+\]
+
+Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system.
+
+\subsection*{Associativity of Forking}
+Associativity is a core structural law of algebraic operations, stating that the grouping of operations does not affect the overall behaviour of a computation.
+
+\[
+(A \oplus B) \oplus C \quad \equiv \quad A \oplus (B \oplus C)
+\]
+In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
+
+
+\begin{figure}[H]
+    \centering
+
+
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+\begin{lstlisting}
+if Fork(){
+    if Fork(){
+        A
+    }
+    else{
+        B
+    }
+}
+else{
+    C
+}
+\end{lstlisting}
+&
+&
+\begin{lstlisting}
+if Fork(){
+    A
+} 
+else{
+    if Fork(){
+        B
+    }
+    else{
+        C
+    }
+}
+\end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-2em}
+
+    \caption{Equivalent code structures under associative forking}
+    \label{fig:enter-label}
+\end{figure}
+
+
+
+
+Structural properties describe how computations may be grouped and rearranged without changing the meaning of a program. This makes them especially useful for restructuring code, as they allow us to transform the shape of a program without affecting its behaviour. In particular, associativity enables us to restructure nested control flows, revealing opportunities for parallel execution. This facilitates tree-based parallel execution, allowing nested computations to be restructured into balanced, parallel-friendly forms.
+
+For example, if we knew that workers were independent of each other, restructuring the following code:
+\vspace{-1em} % reduce space above table
+\begin{figure}[H]
+    \centering
+    \begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+        \begin{lstlisting}
+Server forks Worker 1
+Server forks Worker 2
+Server forks Worker 3
+        \end{lstlisting}
+        &
+        &
+        \begin{lstlisting}
+Server forks Worker 1
+    Worker 1 forks Worker 2
+        Worker 2 forks Worker 3
+        \end{lstlisting}
+    \end{tabular}
+    \vspace{-1em} % reduce space below table
+
+    \caption{Equivalent flat and nested process structures.}
+    \label{fig:process-restructuring}
+\end{figure}
+
+
+
+\underline{Proof}
+
+In the continuation passing style, we  write the associativity property of \lstinline{nondet} as:
+\equivalenceStatement{nondet}
+{
+if Fork() then
+if Fork() 
+a 
+else 
+b 
+else 
+c
+}
+{nondet}
+{
+if Fork() then a 
+else 
+if Fork() 
+ then b 
+ else c
+}
+
+\underline{Left Hand Side}
+\[
+\begin{array}{l}
+\quad \equiv \quad (11) \\[5pt]
+\textbf{resume }\text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \\ \text{ else Fork()}(s \rightarrow \textbf{if }  s \textbf{ then } b \textbf{ else } c)) \;/\; k] \\[5pt]
+
+\quad \equiv \quad (\text{subst}) \\[5pt]
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{True} \\[2pt]
+\texttt{++} \\ 
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{False} \\[5pt]
+
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+\textbf{with } \text{nondet handle } a \;\texttt{++}\; \textbf{with } \text{nondet handle } \text{Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \\[5pt]
+
+\quad \equiv \quad (11) \\[5pt]
+a \;\texttt{++}\; (\text{resume True} \;\texttt{++}\; \text{resume False} \; [()/x,\; \text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c \;/\; k]) \\[5pt]
+
+\quad \equiv \quad (\text{subst}) \\[5pt]
+a \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{True} \\
+\texttt{++} \\
+(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{False} \\[5pt]
+
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+a \;\texttt{++}\; (b \;\texttt{++}\; c)
+\end{array}
+\]
+
+
+\underline{Right Hand Side}
+
+
+
+\[
+\begin{array}{l}
+\quad \equiv \quad (11) \\[5pt]
+\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()} \\(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;/\; k] \\[5pt]
+
+\quad \equiv \quad (\text{subst}) \\[5pt]
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;\text{True} \\
+\texttt{++} \\
+\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;\text{False} \\[5pt]
+
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
+\textbf{with } \text{nondet handle } \text{Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \;\texttt{++}\; \textbf{with } \text{nondet handle } c \\[5pt]
+
+\quad \equiv \quad (11) \\[5pt]
+(\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b \;/\; k]) \;\texttt{++}\; c \\[5pt]
+
+\quad \equiv \quad (\text{subst}) \\[5pt]
+(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
+
+\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt] 
+(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
+
+\quad \equiv \quad (\text{evaluate}) \\[5pt]
+(a \;\texttt{++}\; b) \;\texttt{++}\; c
+\end{array}
+\]
+
+
+\[
+\textbf{LHS} = \textbf{RHS} \quad \text{and} \quad a ++ (b ++ c) \equiv (a ++ b) ++ c
+\]
+
+
+
+
+\section{State Models and Handler Composition}
+In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. 
+
+We obtain two different models of state depending on this ordering:
+\begin{itemize}
+    \item Local State (outer nondeterminism, inner state): Here each nondeterministic branch maintains its own independent state, akin to local variables within a program. The scope is private to the process and only lasts as long as the process lasts.
+    \item Global State (outer state, inner nondeterminism): Here the same state is shared among all branches of a nondeterministic computation similar to the case of a global file system.
+\end{itemize}
+
+
+
+We now go onto describe the properties of global and local state as described in the latest version of the Open Group Unix Specifications \cite{posix}. Our goal is to show how these behaviours are captured within our effect handler model, and to contrast this with the conventional imperative mechanisms typically used to implement such functionality in Unix-like systems.
+
+
+
+\subsection{Global State : Unix Specifications}
+\subsubsection*{Shared State} 
+In the global state model, all branches operate over a single, shared memory state that is visible and modifiable across the entire computation. We implemented a detailed version of this behaviour in Koka by modelling the file system as a globally accessible state handler. We illustrate how this behaviour arises by reasoning through handler scope and equational equivalence.
+
+\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.2316}]
+ This volume of POSIX.1-2008 does not specify the behaviour of concurrent writes to a regular file |
+ from multiple threads, except that each write is atomic (see Section 2.9.7, onpage 522). |
+ Applications should use some form of concurrency control.
+\end{tcolorbox}
+
+
+\begin{longtable}{@{}l@{}}
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{with } nondet \textbf{ handle} \\
+\quad\quad Fork()(p.\textbf{if } p \textbf{ then } set(x)(a.C\textsubscript{1}) \textbf{ else } set(y)(b.C\textsubscript{2})) \\
+\quad$\equiv$ (11) \\
+\\
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{resume } True \text{ ++ } \textbf{resume } False \\
+\quad [()/v,\ \text{fun } r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)] \\
+\\
+\quad$\equiv$ (\text{subst}) \\
+\textbf{with } state \textbf{ handle} \\
+\quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ True \\
+\quad ++ \\
+\quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ False \\
+\\
+\quad$\equiv$ (8) \\
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{with } nondet \textbf{ handle if } True \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
+\quad ++ \\
+\quad \textbf{with } nondet \textbf{ handle if } False \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
+\\
+\quad$\equiv$ (5,6) \\
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{with } nondet \textbf{ handle } set(x)(a.C1) \\
+\quad ++ \\
+\quad \textbf{with } nondet \textbf{ handle } set(y)(b.C2) \\
+\\
+\quad$\equiv$ (12) \\
+\textbf{with } state \textbf{ handle} \\
+\quad set(x)(a.\textbf{with } nondet \textbf{ handle } C1) \\
+\quad ++ \\
+\quad set(y)(b.\textbf{with } nondet \textbf{ handle } C2) \\
+\end{longtable}
+
+
+This creates a non deterministic outcome, as we can see from the example above, the order in which the scheduler chooses to run these branches will affect the final state of the system. To each process the system is nondeterministic as it doesn't know what state the system will be in when it is run. 
+
+\subsection{Local State : Unix Specifications}
+
+\subsubsection{Independent and Deterministic State} 
+In this handler configuration, the state handler is applied to each branch, allowing each to maintains a separate, independent state. This isolation ensures that there is no interference between parallel computations. Within each branch, the state is deterministic, the state laws shown in previous sections hold.
+
+\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.899}]
+    Any modifications to the data in
+ MAP\_PRIVATE mappings made by the parent after fork() returns shall be visible only to
+ the parent. Modifications to the data in MAP\_PRIVATE mappings made by the child shall
+ be visible only to the child.
+  \\ ... \\
+A process is an address space with one or more threads executing within that address space. Each process has its own private memory and system resources
+\end{tcolorbox}
+
+We can see, when rewriting these laws in handler notation, that they remain trivially valid: the state handler processes all effects before any branching occurs.
+\begin{figure}[H]
+
+\centering
+
+\vspace{-0.0em}
+\[
+\begin{array}{@{}l@{}l@{}l@{}l@{}}
+\shortstack{
+  \textbf{with } \text{nondet handle} \\
+  \textbf{with } \text{state handle} \\
+  \quad\quad\text{set(a)(x.set(b)(y.C))}
+}
+&
+\shortstack{
+  \textbf{with } \text{nondet handle} \\
+  \textbf{with } \text{state handle} \\
+  \quad\quad\text{set(a)(x.get()(y.C))}
+}
+&
+\shortstack{
+  \textbf{with } \text{nondet handle} \\
+  \textbf{with } \text{state handle} \\
+  \quad\quad\text{get()(x.set(b)(y.C))}
+}
+&
+\shortstack{
+  \textbf{with } \text{nondet handle} \\
+  \textbf{with } \text{state handle} \\
+  \quad\quad\text{get()(x.get()(y.C))}
+}
+\end{array}
+\]
+\caption{Standard state laws remain valid under local state, as all state operations are resolved before nondeterminism is introduced.}
+\label{fig:local-state-laws}
+\end{figure}
+
+
+
+
+
+\begin{longtable}{@{}l@{}}
+\textbf{with } nondet \textbf{ handle} \\ 
+\quad \textbf{with } state \textbf{ handle} \\
+\quad\quad \text{Fork()(p.if p then set(x)(a.C\textsubscript{1}) else set(y)(b.C\textsubscript{2}))} \\
+\quad$\equiv$ (12) \\[5pt]
+\textbf{with } nondet \textbf{ handle} \\
+\quad \text{Fork()}(a.\ \textbf{with } state \textbf{ handle } (\textbf{if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2}))) \\
+\quad$\equiv$ (11) \\[5pt]
+\textbf{resume } x \text{ ++ } \textbf{resume } y \\
+\quad [()/v,\ \text{fun } a $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2})] \\
+\quad$\equiv$ (subst) \\[5pt]
+\text{fun } a $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{1})\ x \\
+\text{++} \\
+\text{fun } a $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2})\ y \\
+\quad$\equiv$ (8, simplify) \\[5pt]
+\textbf{with } nondet,\ state \textbf{ handle set(x)}(b.C\textsubscript{1}) \\
+\text{++} \\
+\textbf{with } nondet,\ state \textbf{ handle set(y)}(d.C\textsubscript{2}) \\
+\quad$\equiv$ (11) \\[5pt]
+\text{fun } \_ $\rightarrow$ (k ())\ s\ [\text{x}/s,\ \text{fun } b $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle }(c.C\textsubscript{1})] \\
+\text{++} \\
+\text{fun } \_ $\rightarrow$ (k ())\ s\ [\text{y}/s,\ \text{fun } d $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle }(e.C\textsubscript{2})] \\
+\end{longtable}
+
+
+
+
+\subsubsection{Impermanence} 
+The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually. Once a branch terminates, its state is no longer stored.
+
+
+
+
+\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.554}]
+Memory mappings that were created in the process shall be unmapped before the process
+ is destroyed.
+ \end{tcolorbox}
+ 
+
+\begin{longtable}{@{}l@{}}
+\textbf{with } nondet handle \\
+\quad \textbf{with } state handle \\
+\quad\quad set(a)(x. return 0) \, ++ \, set(b)(y. return 0) \\
+
+\quad$\equiv$ (11) \\
+
+\textbf{with } nondet handle \\
+\quad fun \_ $\rightarrow$ (k())s \ [a/s,\ fun y $\rightarrow$ \textbf{with } state handle return 0]\\
+\quad\quad ++ \\
+\quad fun \_ $\rightarrow$ (k())s \ [b/s,\ fun y $\rightarrow$ \textbf{with } state handle return 0] 
+\quad$\equiv$ (subst) \\
+\textbf{with } nondet handle \\
+\quad fun \_ $\rightarrow$ (fun y $\rightarrow$ \textbf{with } state handle return 0)() \ a \\
+\quad\quad ++ \\
+\quad fun \_ $\rightarrow$ (fun y $\rightarrow$ \textbf{with } state handle return 0)() \ b \\
+\quad$\equiv$ (8) \\
+\textbf{with } nondet handle \\
+\quad fun \_ $\rightarrow$ (\textbf{with } state handle return 0) \ a \\
+\quad ++ \\
+\quad fun \_ $\rightarrow$ (\textbf{with } state handle return 0) \ b \\
+\quad$\equiv$ (10) \\
+\textbf{with } nondet handle \\
+\quad fun \_ $\rightarrow$ 0 \ a \quad ++ \quad fun \_ $\rightarrow$ 0 \ b \\
+\quad$\equiv$ (apply) \\
+\textbf{with } nondet handle \\
+\quad 0 ++ 0 \\
+\end{longtable}
+
+    
+\subsubsection{State Inheritance:} When a process is forked, the child receives a snapshot of the parent’s state at that moment. This fork-time duplication ensures that both processes start from identical conditions, but proceed independently. Changes made in one process no longer affect the other.
+
+\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.897}]
+Memory mappings created in the parent shall be retained in the child process
+\end{tcolorbox}
+
+
+\begin{tcolorbox}[examplebox, title=Practical Example: Inheriting environment variables]
+
+
+\begin{lstlisting}
+sessionmgr(Root, {
+  if Fork() then {
+    su(Alice);
+    whoami();      // prints "Alice"
+  } else {
+    whoami();      // prints "Root"
+})});
+...
+\end{lstlisting}
+\[
+\begin{array}{l}
+\textbf{with } \text{nondet} \textbf{ handle } \\
+\quad \textbf{with } \text{sessionmgr(Root)} \textbf{ handle } \\
+\quad\quad \text{Fork}()(r. \textbf{if } r \textbf{ then } (su(Alice); \textit{whoami}()) \textbf{ else } \textit{whoami}()) \\[5pt]
+\quad\equiv\quad (12) \\
+\end{array}
+\]
+
+\begin{longtable}{@{}l@{}}
+\textbf{with } nondet \textbf{ handle } Fork()(r. \textbf{with } sessionmgr \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); \\ whoami()) \textbf{ else } whoami())) \\
+
+\quad$\equiv$\quad (11) \textit{The state handler is applied outside, so all branches share the same initial state.} \\
+\textbf{resume } True ++ \textbf{resume } False \\
+\quad [ ()/x,\ \textbf{fun } r $\rightarrow$ \textbf{with } sessionmgr \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); whoami()) \textbf{ else } whoami()) / k ] \\
+
+\quad$\equiv$\quad (subst) \\
+\textbf{fun } r $\rightarrow$ \textbf{with } sessionmgr(Root) \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); whoami()) \textbf{ else } whoami())\ True \\
+++ \\
+\textbf{fun } r $\rightarrow$ \textbf{with } sessionmgr(Root) \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); whoami()) \textbf{ else } whoami())\ False \\
+
+\quad$\equiv$\quad (8) \\
+\textbf{with } sessionmgr \textbf{ handle } (su(Alice); whoami()) \\
+++ \\
+\textbf{with } sessionmgr(Root) \textbf{ handle } whoami() \\
+
+\quad$\equiv$\quad (11) \\
+\textbf{env}(x, k)\ [\text{``Alice''}/x,\ \textbf{fun } y $\rightarrow$ \textbf{with } sessionmgr \textbf{ handle } whoami()/k] \\
+++ \\
+z $\leftarrow$ \textbf{do Ask()} \ [()/x,\ \textbf{fun } z $\rightarrow$ \textbf{with } env \textbf{ handle } C/k] \\
+\end{longtable}
+
+
+\end{tcolorbox}
+
+
+
+
+
+
+\section{Properties of Processes}
+
+Having clarified the algebraic properties of individual effects and the properties of global and local scope depending on handler ordering, we now look at what properties processes maintain when combining  non determinism, global state, local state.
+
+In this section, we also introduce the exit effect, a non-resumable control operation that disrupts sequencing, and explore how its interaction with other handlers further affects compositional reasoning.
+
+
+\subsubsection*{Local State Breaks Associativity}
+
+In the purely nondeterministic setting, forking is associative, i.e. the grouping/nesting does not affect its semantics. However in the 
+
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+\begin{lstlisting}
+if Fork(){
+    // A
+    if Fork(){
+        // A continued
+        pass
+    }
+    else{
+        // C
+    }
+}
+else{
+    set("B")
+}
+\end{lstlisting}
+&
+&
+\begin{lstlisting}
+if Fork(){
+    A
+} 
+else{
+    // B
+    set("B");
+    if Fork(){
+        // B continued
+        pass
+    }
+    else{
+        // C
+        C
+    }
+}
+\end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-2em}
+
+
+\subsubsection*{Local State Full Distributivity}
+Whilst left distributivity does not hold in general, it does hold in the special case of idempotent effects, where repeated applications of R are equivalent to applying it once. As right distributivity holds trivially through algebraicity of sequencing Local State is fully distributive 
+
+\vspace{-2em}
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
+\begin{lstlisting}
+set(x);
+if Fork(){
+    P;
+}
+else{
+    Q;
+}
+\end{lstlisting}
+&
+&
+\begin{lstlisting}
+if Fork(){
+    set(x); 
+    P;
+}
+else{ 
+    set(x); 
+    Q;
+}
+\end{lstlisting}
+\end{tabular}
+\end{table}
+\vspace{-2em}
+
+
+\subsection{Summary of Properties Under Composition}
+
+
+\section{Exceptions}
+Processes can terminate successfully by running to completion, or they can terminate by performing an exit system call. The exit call takes a numeric argument indicating the exit status of the process. Unlike other operations exit does not allow for continuation, it discards the remaining computation and terminates execution immediately.
+
+Exceptions disrupt all of the algebraic properties that held before hand, these properties now only hold on the assumption that there is no exception in their scope. Exceptions only hold one property, that any code that succeeds them is semantically irrelevant.
+
+
+\effectDef{exit n}{\text{Exit : Int} \rightarrow 0}
+
+\[
+\mathrm{status} \;\overset{\mathrm{def}}{=}\;
+\mathrm{handler} \;\left\{
+\begin{array}{ll}
+  \mathrm{\textbf{return}\:\_} & \mapsto 0 \quad\\[0.5ex]
+  \langle\!\langle \mathrm{Ask} \langle\rangle\rangle &  \mapsto n \quad\\[0.5ex]
+ 
+\end{array}
+\right\}
+\]
+
+\subsection*{Absorption}
+
+The absorption property states that once an exit operation is called within a computation, any further computation is irrelevant. The following formalises the property that, whatever comes after the exit, does not affect the behaviour of the program:
+
+\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
+
+Because Exit n returns type 0, the uninhabited type, it cannot yield a result. To embed it in a computation expecting a value of type $\alpha$, we use the absurd function to coerce from the empty type to $\alpha$. This reflects that any code after Exit n is unreachable, and ensures the expression remains well-typed.
+
+\[
+\mathrm{exit\:n} \;\overset{\mathrm{def}}{=}\;
+\mathrm{handler} \;\left\{
+\begin{array}{l}
+  \text{absurd\:(\textbf{do}\:Exit\:n)} \quad\\[0.5ex]
+
+\end{array}
+\right\}
+\]
+
+\underline{Left Hand Side}
+
+\[
+\begin{array}{l}
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{absurd (do Exit } n) (y. C) \\[5pt]
+\quad\equiv\quad (11) \\[5pt]
+v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } C/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+n
+\end{array}
+\]
+
+\underline{Right Hand Side}
+
+\[
+\begin{array}{l}
+\quad\equiv\quad (11) \\[5pt]
+\text{absurd (do Exit } n) (y. D) \\[5pt]
+\quad\equiv\quad (11) \\[5pt]
+v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } D/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+n
+\end{array}
+\]
+
+
+\section{Process Synchronisation}
+
+So far we have introduced a basic time-sharing, using interrupts and the scheduler, that allows the interleaving of process execution. However, as mentioned before, the way that processes are interleaved is non-deterministic, in other words processes don't know the order in which the will be executed. 
+
+This is a problem because, as we have demonstrated, many of our effects are non-commutative meaning that the order of execution is important for correctness. This creates what is known as a "race condition", A race condition arises when the correctness of a program depends on the nondeterministic interleaving of concurrent operations on shared state. Without explicit synchronisation, the outcome is unpredictable and may differ across runs, making correct behaviour accidental rather than guaranteed.
+
+Currently the only way to guarantee execution order is to execute all the steps, in the same process, sequentially with no interrupts which defeats the point of our time sharing system as no interleaving is possible in this time, which blocks the other processes.
+
+To introduce flexibility around process interleaving whilst maintaining guarantees about execution ordering we introduce two features
+
+\begin{itemize}
+    \item \lstinline{Wait} \textbf{system calls: } This allows a parent to suspend execution until its child process (identified by its process id) has finished executing. Think of this as introducing a causal dependency, the parent can only when the child finishes.
+    \item \textbf{Mutexes: } This a process to lock a resource, meaning that whilst the process holds this lock, no other process can alter this resource. This guarantees that between interrupts other processes don't alter the resource, which could potentially lead to file corruption. 
+\end{itemize}
+
+Combining these two properties by;
+\begin{enumerate}
+    \item Locking the resource, to prevent other processes simultaneously writing to (and thereby corrupting) our resource
+    \item Splitting up the responsibility for writes between its children, and waiting in order for them to complete
+    \item Unlocking the resource to allow other processes to access it
+\end{enumerate}
+
+we can provide guarantees about write safety whilst still allowing for concurrency.
+ 
+
+\underline{Scenario 1} 
+The 
+
+
+Reasoning about the scheduler is very difficult because it introduces non-determinism into our system. Unlike the algebraic effects, which have clear equational rules, the behaviour of the scheduler depends on the runtime state of the process queue and the particular order in which processes are resumed. 
+
+
+
+
+
+\subsection*{How Wait Distributes Over Fork}
+
+
+This proof shows how \texttt{wait} interacts with \texttt{fork}. Both resumptions produced by the \texttt{pid\_nondet} handler perform a \texttt{wait}. In the parent process, \texttt{wait(pid)} refers to the child and corresponds to a standard blocking operation. In the child process, \texttt{Fork()} returns \texttt{0} to indicate that it is the newly created process. Since there is no process with PID \texttt{0} in the queue, \texttt{wait(0)} has no effect and acts as a no-op, returning \texttt{()}.
+
+
+
+\section{Reasoning Conclusions}
+
+In this section we have demonstrated how to use algebraic equivalences to reason about effect handlers. We first examined different models of state depending on how we composed the nondeterminism and state handlers, which corresponded to global file system state and process local state. We verified that each of these models fulfilled the properties that Unix expected them to have. 
+
+We then went on to reason about other interesting properties that the equivalences allowed us to show. This helped to verify that certain program transformations are valid and allowed us to simplify our code. 
+
+We also discovered that many of the rules that held in an isolated setting break down under composition. 
+
+It is very difficult to reason about any properties which rely on the scheduler. This makes reasoning about any forms of process synchronsiation or interprocess communication very difficult to do. Unfortunately effects like \lstinline{Wait} or \lstinline{Acquire} \lstinline{Release} which introduce partial order semantics can't be easily reasoned about using our equivalences as they depend upon the dynamic execution state of our system.
+
+\chapter{Conclusions}
+
+\section{Unix Implementation in Koka}
+We have successfully realised the "Toy Unix" system described in Hillerström's paper, we provided implementations for exception handling, a basic IO scheme, user functionality, a basic serial file system, piping and two methods of process scheduling. We achieved the goal we set out to do namely, to show that we can implement a simulation of Unix, tackling the complex problems this presents, in a concise and modular way.
+
+\subsection*{Future Work}
+Implementing the process synchronisation features described in the previous chapter would provide vital functionality to our Unix system. Currently, if the system wants to perform writes in order, it can't do any interleaving, meaning that all writes are blocking defeating the purpose of a time-sharing system. Mutexes would provide a simple way to guarantee that resources can't be tampered with.
+
+\section{Reasoning}
+We successfully verified that our implementation of Unix follows the rules expected of it according to the Unix Specifications. We quickly ran into problems when trying to reason about anything which was not directly related to code structure, the dynamic state of the scheduler prevented us doing any reasoning about synchronisation or IPC.
+\subsection*{Future}
+Further reasoning about partial ordering of effectful operations using Waits and Mutexes. We could also implement a model of Local File Descriptor tables for processes and a global Open File Table. This would open up reasoning about sharing and isolation of state and how this aids modularity and functionality.  
+
+% \bibliographystyle{plain}
+\bibliographystyle{plain}
+\bibliography{mybibfile}
+
+
+% You may delete everything from \appendix up to \end{document} if you don't need it.
+\appendix
+
+\chapter{Single-cell state proofs} 
+
+\section{Simplified State} \label{full-simplified-single-cell-state-proof}
 
 \subsubsection*{Idempotence of Set}
 Performing consecutive \lstinline{set} operations retains only the final update, as each invocation completely overwrites the current state:
@@ -1089,1034 +1913,7 @@ A \lstinline{get} followed by a \lstinline{set}, updates the state with a new va
 \]
 LHS $\equiv$ RHS
 
-\subsection{Multi-Cell State}
-Unfortunately attempting to reason about the state model directly in Hillerström's thesis proved to be too complicated. Interacting with the file system involved functions that used; Directory, I-List, Data Region and all their associated helper functions made reasoning too complicated to be practical. 
-
-This simplified system is less accurate to Unix than Hillerström's "Tiny Unix" but maintains the key functionality (however it loses file linking functionality). From now on we will attempt to reason about how state will interact with other features in our system such as nondeterminism and concurrency. 
-
-This handler for multi-cell state generalises the single-cell model we introduced earlier, replacing the implicit single memory cell with an explicit key-value map. The \lstinline{multiState} handler works in much the same way as the previous one. The main difference is that we expect \lstinline{s} to be a map rather than a single-value. Also note that, in the set case, we use the parameter s, we can no longer discard the current state as we want to update a single key-value pair, not completely overwrite the previous mappings. Both lookup and update are parametrised by the current state, \lstinline{s}.
-
-\[
-\text{state} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
-\begin{array}{ll}
-\text{get}(k_0; k) &\mapsto \text{fun } s \mapsto \text{let } v = \text{lookup}(k_0, s) \text{ in } (k\ v)\ s \\
-\text{set}(k_0, v; k) &\mapsto \text{fun } s \mapsto \text{let s'} = \text{update}([k_0:=v],s) \text{ in } (k\ ())\ s'\ \\
-\text{return } x &\mapsto \text{fun } \_ \mapsto \text{return } x
-\end{array}
-\right\}
-\]
-
-
-In addition to the properties that held in the single-cell state model, which hold for each key independently, the multicell model allows us to derive additional algebraic properties: commutativity of operations on disjoint keys. These properties capture the algebraic independence of effects targeting separate parts of the state and are formalised by the following equivalences:
-\begin{enumerate}
-    \item Disjoint Write-Write Commutativity
-    \[set(k1,v1);set(k2,v2) \equiv set(k2,v2);set(k1,v1)\] 
-    \item Disjoint Write-Read Independence
-        \[set(k1,v1);get(k2) \equiv get(k2);set(k1,v1)\] 
-    \item Disjoint Read-Read Commutativity
-        \[get(k1);get(k2) \equiv get(k2);get(k1)\] 
-\end{enumerate}
-
-These properties are vital as they allow for reasoning about different parts of the system to be treated independently. This kind of modular reasoning is particularly important in the presence of nondeterminism and concurrency, where operations may execute in varying orders.
-
-\section{Process Forking - Non Determinism}
-Process forking introduces nondeterministic branching into our system which exhibits a number of interesting algebraic properties. By first establishing these properties in isolation we provide a basis for understanding how forking composes with other effects. In subsequent sections we will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
-
-
-\[
-\text{nondet} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
-\begin{array}{ll}
-\text{Fork}() &\mapsto \text{\textbf{resume} True ++ \textbf{resume} False} \\
-
-\textbf{return } x &\mapsto \textbf{return } [x]
-\end{array}
-\right\}
-\]
-
-Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system.
-
-\subsection*{Associativity of Forking}
-Associativity is a core structural law of algebraic operations, stating that the grouping of operations does not affect the overall behaviour of a computation.
-
-\[
-(A \oplus B) \oplus C \quad \equiv \quad A \oplus (B \oplus C)
-\]
-In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
-
-
-\begin{figure}[H]
-    \centering
-
-
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-if Fork(){
-    if Fork(){
-        A
-    }
-    else{
-        B
-    }
-}
-else{
-    C
-}
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-if Fork(){
-    A
-} 
-else{
-    if Fork(){
-        B
-    }
-    else{
-        C
-    }
-}
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-2em}
-
-    \caption{Equivalent code structures under associative forking}
-    \label{fig:enter-label}
-\end{figure}
-
-
-
-
-Structural properties describe how computations may be grouped and rearranged without changing the meaning of a program. This makes them especially useful for restructuring code, as they allow us to transform the shape of a program without affecting its behaviour. In particular, associativity enables us to restructure nested control flows, revealing opportunities for parallel execution. This facilitates tree-based parallel execution, allowing nested computations to be restructured into balanced, parallel-friendly forms.
-
-For example, if we knew that workers were independent of each other, restructuring the following code:
-\vspace{-1em} % reduce space above table
-\begin{figure}[H]
-    \centering
-    \begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-        \begin{lstlisting}
-Server forks Worker 1
-Server forks Worker 2
-Server forks Worker 3
-        \end{lstlisting}
-        &
-        &
-        \begin{lstlisting}
-Server forks Worker 1
-    Worker 1 forks Worker 2
-        Worker 2 forks Worker 3
-        \end{lstlisting}
-    \end{tabular}
-    \vspace{-1em} % reduce space below table
-
-    \caption{Equivalent flat and nested process structures.}
-    \label{fig:process-restructuring}
-\end{figure}
-
-
-
-\underline{Proof}
-
-In the continuation passing style, we can write the associativity property of \texttt{nondet} as:
-\equivalenceStatement{nondet}
-{
-if Fork() then
-if Fork() 
-a 
-else 
-b 
-else 
-c
-}
-{nondet}
-{
-if Fork() then a 
-else 
-if Fork() 
- then b 
- else c
-}
-
-\underline{Left Hand Side}
-\[
-\begin{array}{l}
-\quad \equiv \quad (11) \\[5pt]
-\textbf{resume }\text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \\ \text{ else Fork()}(s \rightarrow \textbf{if }  s \textbf{ then } b \textbf{ else } c)) \;/\; k] \\[5pt]
-
-\quad \equiv \quad (\text{subst}) \\[5pt]
-\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{True} \\[2pt]
-\texttt{++} \\ 
-\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{False} \\[5pt]
-
-\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
-\textbf{with } \text{nondet handle } a \;\texttt{++}\; \textbf{with } \text{nondet handle } \text{Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \\[5pt]
-
-\quad \equiv \quad (11) \\[5pt]
-a \;\texttt{++}\; (\text{resume True} \;\texttt{++}\; \text{resume False} \; [()/x,\; \text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c \;/\; k]) \\[5pt]
-
-\quad \equiv \quad (\text{subst}) \\[5pt]
-a \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{True} \\
-\texttt{++} \\
-(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{False} \\[5pt]
-
-\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
-a \;\texttt{++}\; (b \;\texttt{++}\; c)
-\end{array}
-\]
-
-
-\underline{Right Hand Side}
-
-
-
-\[
-\begin{array}{l}
-\quad \equiv \quad (11) \\[5pt]
-\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()} \\(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;/\; k] \\[5pt]
-
-\quad \equiv \quad (\text{subst}) \\[5pt]
-\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;\text{True} \\
-\texttt{++} \\
-\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \text{ then Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;\text{False} \\[5pt]
-
-\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
-\textbf{with } \text{nondet handle } \text{Fork()}(s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b) \;\texttt{++}\; \textbf{with } \text{nondet handle } c \\[5pt]
-
-\quad \equiv \quad (11) \\[5pt]
-(\textbf{resume } \text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b \;/\; k]) \;\texttt{++}\; c \\[5pt]
-
-\quad \equiv \quad (\text{subst}) \\[5pt]
-(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
-
-\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt] 
-(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{True} \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } a \textbf{ else } b)\; \text{False} \;\texttt{++}\; c \\[5pt]
-
-\quad \equiv \quad (\text{evaluate}) \\[5pt]
-(a \;\texttt{++}\; b) \;\texttt{++}\; c
-\end{array}
-\]
-
-
-\[
-\textbf{LHS} = \textbf{RHS} \quad \text{and} \quad a ++ (b ++ c) \equiv (a ++ b) ++ c
-\]
-
-
-\subsection*{Distributivity}
-Distributivity describes how two binary operation interact with one another. Formally, given three elements A,B,C and two binary operations $\diamond, \circ $
-
-\[
-\begin{array}{l l}
-\text{Left Distributivity:} & A \diamond (B \circ C) \;\equiv\; (A \diamond B) \circ (A \diamond C) \\[5pt]
-\text{Right Distributivity:} &(A \diamond B) \circ C  \;\equiv\; (A \circ C) \diamond (B \circ C)
-\end{array}
-\]
-
-
-
-\subsubsection*{Right Distributivity}
-We can show that non determinism and sequencing (considered a binary operation \texttt{P;Q}) are right distributive within our system. 
-We can prove that the code:
-
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-if Fork(){
-    P; 
-    R;
-}
-else{ 
-    Q; 
-    R;
-}
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-if Fork(){ 
-    P;
-}
-else{
-    Q;
-}
-R;
-\end{lstlisting}
-\end{tabular}
-\end{table}
-
-\vspace{-2em}
-
-\underline{Proof}
-Expressing this property in the continuation passing style of our equivalence rules:
-
-\equivalenceStatement{nondet}{Fork()(t.(if t then P;R else Q;R) 
-}{nondet}{Fork()(t.(if t then P else Q); R)
-}
-
-\underline{Left Hand Side}
-\[
-\begin{array}{l}
-
-\quad\equiv\quad (11) \\[5pt]
-\text{resume True} ++ \text{resume False} [()/x, \text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P;R \textbf{ else } Q;R)/k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P;R \textbf{ else } Q;R)\ \text{True} \\[2pt]
- \mathbin{++} 
-\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P;R \textbf{ else } Q;R)\ \text{False} \\[5pt]
-\quad\equiv\quad (8, \text{simplify}) \\[5pt]
-P;R  ++ Q;R \\[1em]
-\end{array}
-\]
-
-\underline{Right Hand Side}
-\[
-\begin{array}{l}
-\quad\equiv\quad (11) \\[5pt]
-\text{resume True} ++ \text{resume False} [()/x, \text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P \textbf{ else } Q;R) / k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P \textbf{ else } Q);R\ \text{True} \\[2pt]
-\quad \mathbin{++} \\
-\text{fun } t \rightarrow (\textbf{if } t \textbf{ then } P \textbf{ else } Q);R\ \text{False} \\[5pt]
-\quad\equiv\quad (8, \text{simplify}) \\[5pt]
-(P;R) \: \text{++} \:(Q;R) \\[5pt]
-\end{array}
-\]
-
-
-\subsubsection*{Left Distributivity}
-
-Unfortunately, process forking is not, in general, left distributive:
-
-\vspace{-2em}
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-R;
-if Fork(){
-    P
-}
-else {
-    Q
-}
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-if Fork(){
-    R; 
-    P;
-} 
-else{
-    R; 
-    Q; 
-}
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-2em}
-This is because in the first example R is only executed once by the unforked process, whereas in the second example it is executed by both the parent and the child. 
-Mutation operations such as append(x) would be applied a different numbers of times breaking the equivalence.
-
-
-
-
-
-\section{State Models and Handler Composition}
-In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. 
-
-We obtain two different models of state depending on this ordering:
-\begin{itemize}
-    \item Local State (outer nondeterminism, inner state): Here each nondeterministic branch maintains its own independent state, akin to local variables within a program. The scope is private to the process and only lasts as long as the process lasts.
-    \item Global State (outer state, inner nondeterminism): Here the same state is shared among all branches of a nondeterministic computation similar to the case of a global file system.
-\end{itemize}
-
-
-
-
-
-
-
-\subsection{Global State : Unix Specifications}
-\subsubsection*{Shared State} 
-The global state model features a single shared state accessible and modifiable by all branches.
-
-\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.2316}]
- This volume of POSIX.1-2008 does not specify the behaviour of concurrent writes to a regular file |
- from multiple threads, except that each write is atomic (see Section 2.9.7, onpage 522). |
- Applications should use some form of concurrency control.
-\end{tcolorbox}
-
-
-
-
-
-\[
-\begin{array}{l}
-\textbf{with } state \textbf{ handle} \\
-\quad\textbf{with } nondet \textbf{ handle} \\
-\quad\quad \text{Fork()(p.if p then set(x)(a.C\textsubscript{1}) else set(y)(b.C\textsubscript{2}))}
-\\
-\quad\equiv\quad (11) \quad \\ 
-\textbf{with } state \textbf{ handle} \\
- 
-\quad\textbf{resume } \text{x} \text{ ++ } \textbf{resume } \text{y} \\[2pt]
-[()/v, \text{fun } r \rightarrow \text{\textbf{with} nondet \textbf{handle} if } r \text{ then set(x)}(a.C1) \text{ else set(y)}(b.C2)] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt] 
-\textbf{with } state \textbf{ handle} \\
-\quad
-\quad\text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } r \text{ then set(x)}(a.C1) \text{ else set()}(b.C2)\ \text{x} \\[2pt]
-\quad \quad \text{ ++ } \\[2pt]
-\quad \quad \text{fun } p \rightarrow \text{\textbf{with} nondet \textbf{handle} if } r \text{ then set(x)}(a.C1) \text{ else set()}(b.C2)\ \text{y} \\[5pt]
-\quad\equiv\quad (8, \text{simplify}) \\[5pt]
-\textbf{with } state \textbf{ handle} \\
-  
-\quad \text{\textbf{with} nondet \textbf{handle} set(x)}(a.C1) \\[2pt]
-\quad\text{ ++ } \\ 
-\quad\text{\textbf{with} nondet \textbf{handle} set()}(b.C2) \\[5pt]
-\quad\equiv\quad (12) \\[5pt]
-
-\textbf{with } state \textbf{ handle} \\
-\quad \text{set(x)}(a.\text{\textbf{with} nondet \textbf{handle} } C1) 
-\quad \\[2pt]
-\quad \text{ ++ } \\ 
-\quad \text{set(y)}(b.\text{\textbf{with} nondet \textbf{handle} } C2) \\[5pt]
- 
-\end{array}
-\]
-
-This creates a non deterministic outcome, as we can see from the example above, the order in which we choose to 
-
-\subsection{Local State : Unix Specifications}
-
-\subsubsection{Independent State (isolation):} 
-Each branch maintains a separate independent state. This isolation ensures that there is no interference between parallel computations.
-
-
-
-\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.899}]
-    Any modifications to the data in
- MAP\_PRIVATE mappings made by the parent after fork() returns shall be visible only to
- the parent. Modifications to the data in MAP\_PRIVATE mappings made by the child shall
- be visible only to the child.
-\end{tcolorbox}
-
-
-
-\[ 
-\begin{array}{l}
-\textbf{with } nondet \textbf{ handle} \\
-\quad\textbf{with } state \textbf{ handle} \\
-\quad\quad \text{Fork()(p.if p then set(x)(a.C\textsubscript{1}) else set(y)(b.C\textsubscript{2}))}
-\\
-\quad\equiv\quad (12) \\[5pt]
-\text{\textbf{with} nondet \textbf{handle}}\ \\ \quad \text{Fork()}(a.\ \text{\textbf{with} state \textbf{handle} } (\textbf{if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2}))) \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-\text{\textbf{resume} x} \text{ ++ } \text{\textbf{resume} y} 
-\\ 
-\ [()/v, \text{fun } a \rightarrow  \text{\textbf{with} nondet,  state \textbf{handle} if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2})]
-\\ \quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun } a \rightarrow \text{\textbf{with} nondet, state} \textbf{ handle} \text{ if } a \text{ then set(x)}(b.C\textsubscript{1} \text{ else set(y)}(d.C\textsubscript{1}\ \text{x} \\
-\text{++} \\
-\text{fun } a \rightarrow \text{\textbf{with} nondet, state \textbf{handle} if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2})\ \text{y} \\[5pt]
-\quad\equiv\quad (8, \text{simplify}) \\[5pt]
-\text{\textbf{with} nondet, state \textbf{handle} set(x)}(b.C\textsubscript{1})) \\[2pt]
-\text{++} \\  \text{\textbf{with} nondet, state \textbf{handle} set(y)}(d.C\textsubscript{2})) \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-\text{fun } \_ \rightarrow (k\ ())\ s\ [\text{x}/s, \text{fun } b \rightarrow \text{\textbf{with} nondet, state \textbf{handle}}(c.C\textsubscript{1})] \\[2pt]
- \text{++} \\ \text{fun } \_ \rightarrow (k\ ())\ s\ [\text{y}/s, \text{fun } d \rightarrow \text{\textbf{with} nondet, state \textbf{handle} }(e.C\textsubscript{2})] \\[5pt]
-
-\end{array} 
-\] 
-
-
-\subsubsection{Deterministic Local State}
-Within each branch, the state laws are predictable, the prior state laws hold.
-
-
-
-\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.1339}]
-If MAP\_PRIVATE is specified, modifications to the mapped data by the calling process shall be visible only to the 
-calling process and shall not change the underlying object.
- \\ ...
-A process is an address space with one or more threads executing within that address space. Each process has its own private memory and system resources
- \end{tcolorbox}
-
-
-
-
-\vspace{-0.0em}
-\[
-\begin{array}{@{}l@{}l@{}l@{}l@{}}
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{set(a)(x.set(b)(y.C))}
-}
-&
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{set(a)(x.get()(y.C))}
-}
-&
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{get()(x.set(b)(y.C))}
-}
-&
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{get()(x.get()(y.C))}
-}
-\end{array}
-\]
-
-    \subsubsection{Impermanence} 
-    Once a branch terminates its state modifications are no longer stored.
-
-
-
-\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.554}]
-Memory mappings that were created in the process shall be unmapped before the process
- is destroyed.
- \end{tcolorbox}
- 
-
-\[
-\begin{array}{l}
-\textbf{with } \text{nondet handle} \\
-\quad \textbf{with } \text{state handle} \\
-\quad\quad \text{set}(a)(x. \text{return } 0) \, \text{++} \, \text{set}(b)(y. \text{return } 0) \\[5pt]
-
-\quad\equiv\quad (11) \\[5pt]
-
-\textbf{with } \text{nondet handle} \\
-\quad \text{fun } \_ \rightarrow (k())s \, [a/s, \text{fun } y \rightarrow \textbf{with } \text{state handle } \text{return } 0] \\
-\quad\quad \text{++} \\
-\quad \text{fun } \_ \rightarrow (k())s \, [b/s, \text{fun } y \rightarrow \textbf{with } \text{state handle } \text{return } 0] \\[5pt]
-
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\textbf{with } \text{nondet handle} \\
-
-\quad\text{fun } \_ \rightarrow (\text{fun } y \rightarrow \textbf{with } \text{state handle } \quad\text{return } 0)() \, a \\
-\quad\quad \text{++} \\
-\quad\text{fun } \_ \rightarrow (\text{fun } y \rightarrow \textbf{with } \text{state handle } \text{return } 0)() \, b \\[5pt]
-
-\quad\equiv\quad (8) \\[5pt]
-
-\textbf{with } \text{nondet handle} \\
-\quad\text{fun } \_ \rightarrow (\textbf{with } \text{state handle } \text{return } 0) \, a \\
-\quad\quad \text{++} \\
-\quad\text{fun } \_ \rightarrow (\textbf{with } \text{state handle } \text{return } 0) \, b \\[5pt]
-
-\quad\equiv\quad (10) \\[5pt]
-
-\textbf{with } \text{nondet handle} \\
-\quad\text{fun } \_ \rightarrow 0 \, a \quad \text{++} \quad \text{fun } \_ \rightarrow 0 \, b \\[5pt]
-
-\quad\equiv\quad (\text{apply}) \\[5pt]
-
-\textbf{with } \text{nondet handle} \\
-\quad 0 \text{ ++ } 0
-\end{array}
-\]
-
-    
-\subsubsection{State Inheritance (Copy-On-Write):} Each new non deterministic process inherits an exact copy of its parent’s state. Any subsequent changes are isolated to that new branch alone. This is known as Copy-On-Write semantics. EXAMPLE of ENV
-
-\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.897}]
-Memory mappings created in the parent shall be retained in the child process
-\end{tcolorbox}
-
-
-\begin{tcolorbox}[examplebox, title=Practical Example: Inheriting environment variables]
-
-\begin{lstlisting}
-sessionmgr(Root, {
-  if Fork() then {
-    su(Alice);
-    whoami();      // prints "Alice"
-  } else {
-    whoami();      // prints "Root"
-  })
-});
-\end{lstlisting}
-
-\[
-\begin{array}{l}
-\textbf{with } \mathit{nondet} \textbf{ handle } \\
-\quad \textbf{with } \mathit{sessionmgr(Root)} \textbf{ handle } \\
-\quad\quad \text{Fork}()(r. \textbf{if } r \textbf{ then } (su; \textit{whoami}()) \textbf{ else } \textit{whoami}()) \\[5pt]
-\quad\equiv\quad (12) \\
-\end{array}
-\]
-
-\[
-\begin{array}{l}
-\textbf{with } \mathit{nondet} \textbf{ handle } \textbf{Fork}()(r \mapsto \textbf{with } \mathit{sessionmgr} \textbf{ handle } (\textbf{if } r \ \textbf{then } (su; \mathit{whoami}()\\) \ \textbf{else } \mathit{whoami}())) \\[5pt]
-
-\quad\equiv\quad (11) \\[2pt]
-\textbf{resume } \mathit{true} \ \text{++} \ \textbf{resume } \mathit{false} \ [ ()/x,\ \textbf{fun } r \rightarrow \textbf{with } \mathit{sessionmgr} \textbf{ handle } (\textbf{if } r \ \\ \textbf{then } (su; \mathit{whoami}()) \ \textbf{else } \mathit{whoami}()) / k ] \\[5pt]
-
-\quad\equiv\quad (\text{subst}) \\[2pt]
-\textbf{fun } r \rightarrow \textbf{with } \mathit{sessionmgr} \textbf{ handle } (\textbf{if } r \ \textbf{then } (su; \mathit{whoami}()) \ \textbf{else } \mathit{whoami}()) \ \mathit{true} \\[2pt]
-\text{++} \\[2pt]
-\textbf{fun } r \rightarrow \textbf{with } \mathit{sessionmgr} \textbf{ handle } (\textbf{if } r \ \textbf{then } (su; \mathit{whoami}()) \ \textbf{else } \mathit{whoami}()) \ \mathit{false} \\[5pt]
-
-\quad\equiv\quad (8) \\[2pt]
-\textbf{with } \mathit{sessionmgr} \textbf{ handle } (su("Alice");\ \mathit{whoami}()) \\[2pt]
-\text{++} \\[2pt]
-\textbf{with } \mathit{sessionmgr("Root")} \textbf{ handle } \mathit{whoami}() \\[5pt]
-
-\quad\equiv\quad (11) \\[2pt]
-\textbf{env}(x,k)\ [\text{``Alice''}/x,\ \textbf{fun } y \rightarrow \textbf{with } \mathit{sessionmgr} \textbf{ handle } \mathit{whoami}()/k] \\[2pt]
-\text{++} \\[2pt]
-z \leftarrow \textbf{do Ask()} \ [()/x,\ \textbf{fun } z \rightarrow \textbf{with } \mathit{env} \textbf{ handle } C/k] \\
-\end{array}
-\]
-
-
-\end{tcolorbox}
-
-
-
-
-
-
-
-\subsection{Emergent Algebraic Behaviour}
-Having clarified how the two handler orders meet the specifications for local and global state in Unix, we now examine the emergent algebraic properties of state, properties arising naturally but not explicitly designed for. This gives us deeper insights about how handler order affects state semantics. In this section we formally characterise and prove several of these key algebraic distinctions. 
-
-\subsubsection*{Local State Breaks Associativity}
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-if Fork(){
-    // A
-    if Fork(){
-        // A continued
-        pass
-    }
-    else{
-        // C
-    }
-}
-else{
-    set("B")
-}
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-if Fork(){
-    A
-} 
-else{
-    // B
-    set("B");
-    if Fork(){
-        // B continued
-        pass
-    }
-    else{
-        // C
-        C
-    }
-}
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-2em}
-
-
-\subsubsection*{Local State Full Distributivity}
-Whilst left distributivity does not hold in general, it does hold in the special case of idempotent effects, where repeated applications of R are equivalent to applying it once. As right distributivity holds trivially through algebraicity of sequencing Local State is fully distributive 
-
-\vspace{-2em}
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-set(x);
-if Fork(){
-    P;
-}
-else{
-    Q;
-}
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-if Fork(){
-    set(x); 
-    P;
-}
-else{ 
-    set(x); 
-    Q;
-}
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-2em}
-
-
-\subsection{Summary of Properties Under Composition}
-
-
-\section{Exceptions}
-Processes can terminate successfully by running to completion, or they can terminate by performing an exit system call. The exit call takes a numeric argument indicating the exit status of the process. Unlike other operations exit does not allow for continuation, it discards the remaining computation and terminates execution immediately.
-
-Exceptions disrupt all of the algebraic properties that held before hand, these properties now only hold on the assumption that there is no exception in their scope. Exceptions only hold one property, that any code that succeeds them is semantically irrelevant.
-
-
-\effectDef{exit n}{\text{Exit : Int} \rightarrow 0}
-
-\[
-\mathrm{status} \;\overset{\mathrm{def}}{=}\;
-\mathrm{handler} \;\left\{
-\begin{array}{ll}
-  \mathrm{\textbf{return}\:\_} & \mapsto 0 \quad\\[0.5ex]
-  \langle\!\langle \mathrm{Ask} \langle\rangle\rangle &  \mapsto n \quad\\[0.5ex]
- 
-\end{array}
-\right\}
-\]
-
-
-
-
-
-
-
-\subsection*{Absorption}
-
-The absorption property states that once an exit operation is called within a computation, any further computation is irrelevant. The following formalises the property that, whatever comes after the exit, does not affect the behaviour of the program:
-
-\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
-
-Because Exit n returns type 0, the uninhabited type, it cannot yield a result. To embed it in a computation expecting a value of type $\alpha$, we use the absurd function to coerce from the empty type to $\alpha$. This reflects that any code after Exit n is unreachable, and ensures the expression remains well-typed.
-
-
-
-
-
-
-\[
-\mathrm{exit\:n} \;\overset{\mathrm{def}}{=}\;
-\mathrm{handler} \;\left\{
-\begin{array}{l}
-  \text{absurd\:(\textbf{do}\:Exit\:n)} \quad\\[0.5ex]
-
-\end{array}
-\right\}
-\]
-
-
-
-\underline{Left Hand Side}
-
-\[
-\begin{array}{l}
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{absurd (do Exit } n) (y. C) \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } C/k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-n
-\end{array}
-\]
-
-\underline{Right Hand Side}
-
-\[
-\begin{array}{l}
-\quad\equiv\quad (11) \\[5pt]
-\text{absurd (do Exit } n) (y. D) \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } D/k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-n
-\end{array}
-\]
-
-
-\section{Process Synchronisation}
-
-So far we have introduced a basic time-sharing, using interrupts and the scheduler, that allows the interleaving of process execution. However, as mentioned before, the way that processes are interleaved is non-deterministic, in other words processes don't know the order in which the will be executed. 
-
-This is a problem because, as we have demonstrated, many of our effects are non-commutative meaning that the order of execution is important for correctness. This creates what is known as a "race condition", A race condition arises when the correctness of a program depends on the nondeterministic interleaving of concurrent operations on shared state. Without explicit synchronisation, the outcome is unpredictable and may differ across runs, making correct behaviour accidental rather than guaranteed.
-
-Currently the only way to guarantee execution order is to execute all the steps, in the same process, sequentially with no interrupts which defeats the point of our time sharing system as no interleaving is possible in this time, which blocks the other processes.
-
-To introduce flexibility around process interleaving whilst maintaining guarantees about execution ordering we introduce two features
-
-\begin{itemize}
-    \item \lstinline{Wait} \textbf{system calls: } This allows a parent to suspend execution until its child process (identified by its process id) has finished executing. Think of this as introducing a causal dependency, the parent can only when the child finishes.
-    \item \textbf{Mutexes: } This a process to lock a resource, meaning that whilst the process holds this lock, no other process can alter this resource. This guarantees that between interrupts other processes don't alter the resource, which could potentially lead to file corruption. 
-\end{itemize}
-
-Combining these two properties by;
-\begin{enumerate}
-    \item Locking the resource, to prevent other processes simultaneously writing to (and thereby corrupting) our resource
-    \item Splitting up the responsibility for writes between its children, and waiting in order for them to complete
-    \item Unlocking the resource to allow other processes to access it
-\end{enumerate}
-
-we can provide guarantees about write safety whilst still allowing for concurrency.
- 
-
-\underline{Scenario 1} 
-The 
-
-\[
-\mathrm{scheduler} \;\overset{\mathrm{def}}{=}\;
-\textbf{handler} \;\left\{
-\begin{array}{ll}
-  \mathbf{return}\; x 
-    & \mapsto \textbf{let } \mathrm{done'} \leftarrow (\mathrm{st.pid}, x) :: \mathrm{st.done} \textbf{ in} \\
-    & \quad\quad \textbf{let } \mathrm{pcb'} = \mathrm{st.pcbMap.remove}(\mathrm{st.pid}) \textbf{ in} \\
-    & \quad\quad \mathrm{runNext} \langle \mathrm{st\; with\; done = done';\; pcbMap = pcb'} \rangle
-    
-    \\[1ex]
-
-  \langle\!\langle \mathrm{UFork} \langle\rangle \rangle\!\rangle 
-    & \mapsto \textbf{let } \mathrm{resume'} \leftarrow \lambda\, \mathrm{st}.\; \mathrm{resume}(\langle 0,\; \mathrm{st} \rangle) \textbf{ in} \\
-    & \quad\quad \textbf{let } \mathrm{pid} \leftarrow \mathrm{st.pnext} \textbf{ in} \\
-    & \quad\quad \textbf{let } q' = \mathrm{st.q} \mathbin{++} [\langle \mathrm{pid};\; \mathrm{Ready}\; \mathrm{resume'} \rangle] \textbf{ in} \\
-    & \quad\quad \textbf{let } \mathrm{pcb'} = \mathrm{st.pcbMap.insert}(\mathrm{pid},\; \mathrm{st.pid}) \textbf{ in} \\
-    & \quad\quad \textbf{let } \mathrm{st'} = \langle \mathrm{st\; with\; q = q';\; pnext = pid} + 1;\; \\ 
-    & \quad\quad\mathrm{pcbMap = pcb'} \rangle \textbf{ in} \\
-    & \quad\quad \mathrm{resume}(\langle \mathrm{pid},\; \mathrm{st'} \rangle) \\[1ex]
-
-  \langle\!\langle \mathrm{Wait} \langle pid \rangle \rangle\!\rangle 
-    & \mapsto \textbf{if } \mathrm{st.pcbMap}[pid] \neq \mathrm{st.pid} \\
-    & \quad\quad  \mathrm{resume}(-1,\; \mathrm{st}) \\[0.5ex]
-    & \quad \textbf{else if } \mathrm{has}(pid,\; \mathrm{st.q}) \\
-    & \quad\quad \textbf{let } \mathrm{resume'} \leftarrow \lambda\, \mathrm{st}.\; \mathrm{resume}(\langle\langle\rangle,\; \mathrm{st}) \textbf{ in} \\
-    & \quad\quad \textbf{let } q' = \mathrm{st.q} \mathbin{++} [\langle \mathrm{st.pid};\; \mathrm{Blocked}\; \langle pid,\; \mathrm{resume'} \rangle \rangle]  \\
-    & \quad\quad\textbf{in } \mathrm{runNext} \langle \mathrm{st\; with\; q = q'} \rangle \\[0.5ex]
-    & \quad \textbf{else } \\ 
-    & \quad\quad\mathrm{resume}(pid,\; \mathrm{st}) 
-    \\
-    
-
-  \langle\!\langle \mathrm{Interrupt} \langle\rangle \rangle\!\rangle 
-    & \mapsto \textbf{let } \mathrm{resume'} \leftarrow \lambda\, \mathrm{st}.\; \mathrm{resume}(\langle\langle\rangle,\; \mathrm{st}) \textbf{ in} \\
-    & \quad\quad \textbf{let } q' = \mathrm{st.q} \mathbin{++} [\langle \mathrm{st.pid};\; \mathrm{Ready}\; \mathrm{resume'} \rangle] \textbf{ in} \\
-    & \quad\quad \mathrm{runNext} \langle \mathrm{st\; with\; q = q'} \rangle
-\end{array}
-\right\}
-\]
-
-Reasoning about the scheduler is very difficult because it introduces non-determinism into our system. Unlike the algebraic effects, which have clear equational rules, the behaviour of the scheduler depends on the runtime state of the process queue and the particular order in which processes are resumed. 
-
-
-
-
-
-\subsection*{How Wait Distributes Over Fork}
-
-
-This proof shows how \texttt{wait} interacts with \texttt{fork}. Both resumptions produced by the \texttt{pid\_nondet} handler perform a \texttt{wait}. In the parent process, \texttt{wait(pid)} refers to the child and corresponds to a standard blocking operation. In the child process, \texttt{Fork()} returns \texttt{0} to indicate that it is the newly created process. Since there is no process with PID \texttt{0} in the queue, \texttt{wait(0)} has no effect and acts as a no-op, returning \texttt{()}.
-
-
-
-
-
-
-
-
-
-\[
-\mathrm{pid\_nondet} \;\overset{\mathrm{def}}{=}\;
-\textbf{handler} \;\left\{
-\begin{array}{ll}
-  \mathrm{\textbf{return}\:res} & \mapsto [res] \quad\\[0.5ex]
-  \langle\!\langle \mathrm{Fork} \langle\rangle\rangle &  \mapsto \textbf{resume} \text{ 0 ++ \textbf{resume} get\_fresh\_pid()}     \quad\\[0.5ex]
-  
-\end{array}
-\right\}
-\]
-
-\[
-\mathrm{parentChildMap} \;\overset{\mathrm{def}}{=}\; \textbf{handler}
-\left\{
-\begin{array}{ll}
-\mathbf{return}\; x 
-  & \mapsto x \\[1ex]
-
-\langle\!\langle \mathrm{get}(k) \rangle\!\rangle 
-  & \mapsto \textbf{let } v \leftarrow \mathrm{map}[k] \textbf{ in} \\
-  & \quad \mathrm{resume}(v,\; \mathrm{map}) \\[1ex]
-
-\langle\!\langle \mathrm{put}(k, v) \rangle\!\rangle 
-  & \mapsto \textbf{let } \mathrm{map'} \leftarrow \mathrm{map}[k := v] \textbf{ in} \\
-  & \quad \mathrm{resume}(\langle\langle\rangle,\; \mathrm{map'})
-\end{array}
-\right\}
-=\]
-
-
-\[
-\mathrm{waitHandler} \;\overset{\mathrm{def}}{=}\; \textbf{handler}
-\left\{
-\begin{array}{ll}
-\mathbf{return}\; x 
-  & \mapsto x \\[1ex]
-
-\langle\!\langle \mathrm{Wait}(pid) \rangle\!\rangle 
-  & \mapsto \textbf{let } \mathrm{parent} \leftarrow \mathrm{get}(pid) \textbf{ in} \\
-  & \quad \textbf{if } \mathrm{parent} \neq \mathrm{st.current\_pid} \\ & \quad\quad  \mathrm{resume}(-1) \\[0.5ex]
-  & \quad \textbf{else if } \mathrm{has}(pid,\; \mathrm{st.q})  \\
-  & \quad\quad \text{// block process and add to back of queue} \\
-  & \quad \textbf{else } \\ & \quad\quad \mathrm{resume}(pid)
-\end{array}
-\right\}
-\]
-
-
-
-\[
-\begin{array}{l}
-\textbf{with } \mathit{parentChildMap} \textbf{ handle } \\
-\quad\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \\
-\quad\quad \text{Fork}()(r. \text{Wait(r)(p.} \textbf{if } r  \textbf{ then } \text{C1} \textbf{ else } \text{C2)} \\[5pt]
-\equiv \\
-\textbf{with } \mathit{parentChildMap} \textbf{ handle } \\
-\quad\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \\\quad\quad \text{Fork}()(r. \textbf{if } r 
-\textbf{ then } (\textit{Wait(p)(p.C1)} \textbf{ else } \text{C2)} \\[5pt]
-
-\end{array}
-\]
-
-
-
-
-\vspace{-2em}
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-p = Fork();
-Wait(p);
-if p
-    C1
-else
-    C2
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-p = Fork();
-if p
-    Wait(p);
-    C1
-else
-    C2
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-2em}
-
-\underline{Proof}
-
-\underline{Left Hand Side}
-\[
-\begin{array}{l}
-Fork ()(y.\ \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)) \\[5pt]
-
-\quad\equiv\quad (11) \\[2pt]
-\textbf{resume } 0\ \text{++}\ \textbf{resume } \mathit{pid} \ [()/v,\ \textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)\ /\ \textbf{resume} ] \\[5pt]
-
-\quad\equiv\quad (\text{subst}) \\[2pt]
-\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)\ 0 \\[2pt]
-\text{++} \\[2pt]
-\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(y)(z.\ \textbf{if } y\ \textbf{then } C_1\ \textbf{else } C_2)\ \mathit{pid} \\[5pt]
-
-\quad\equiv\quad (\text{application}) \\[2pt]
-\textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(0)(z.\ \textbf{if } 0\ \textbf{then } C_1\ \textbf{else } C_2) \\[2pt]
-\text{++} \\[2pt]
-\textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(\mathit{pid})(z.\ \textbf{if } \mathit{pid}\ \textbf{then } C_1\ \textbf{else } C_2) \\[5pt]
-
-\quad\equiv\quad (5,6) \\[2pt]
-\textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(0)(z.\ C_2)\ \text{++}\ \textbf{with } \mathit{pid\_nondet} \ \textbf{handle } \text{Wait}(\mathit{pid})(z.\ C_1) \\[5pt]
-\end{array} 
-\]
-
-
-\underline{Right Hand Side}
-\[
-\begin{array}{l}
-\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{Fork}()(y.\ \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\ \textbf{else } C_2) \\[5pt]
-
-\quad\equiv\quad (11) \\[2pt]
-\textbf{resume } 0\ \text{++}\ \textbf{resume } \mathit{pid} \ [()/v,\ \textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\  \textbf{else } C_2\ /\ \textbf{resume} ] \\[5pt]
-
-\quad\equiv\quad (\text{subst}) \\[2pt]
-\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\ \textbf{else } C_2\  \ 0 \\[2pt]
-\text{++} \\[2pt]
-\textbf{fun } y \rightarrow \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } y \ \textbf{then } \text{Wait}(y)(z.C_1)\ \textbf{else } C_2\ \mathit{pid} \\[5pt]
-
-\quad\equiv\quad (\text{application}) \\[2pt]
-\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } 0 \ \textbf{then } \text{Wait}(0)(z.C_1) \ \textbf{else } C_2 \\[2pt]
-\text{++} \\[2pt]
-\textbf{with } \mathit{pid\_nondet} \textbf{ handle } \textbf{if } \mathit{pid} \ \textbf{then } \text{Wait}(\mathit{pid})(z.C_1)\ \textbf{else } C_2 \\[5pt]
-
-\quad\equiv\quad (5,6) \\[2pt]
-\textbf{with } \mathit{pid\_nondet} \textbf{ handle } C_2\ \text{++}\ \textbf{with } \mathit{pid\_nondet} \textbf{ handle } \text{Wait}(\mathit{pid})(z.C_1) \\[5pt]
-\end{array}
-\]
-
-\section{Reasoning Conclusions}
-
-In this section we have demonstrated how to use algebraic equivalences to reason about effect handlers. We first examined different models of state depending on how we composed the nondeterminism and state handlers, which corresponded to global file system state and process local state. We verified that each of these models fulfilled the properties that Unix expected them to have. 
-
-We then went on to reason about other interesting properties that the equivalences allowed us to show. This helped to verify that certain program transformations are valid and allowed us to simplify our code. 
-
-We also discovered that many of the rules that held in an isolated setting break down under composition. 
-
-It is very difficult to reason about any properties which rely on the scheduler. This makes reasoning about any forms of process synchronsiation or interprocess communication very difficult to do. Unfortunately effects like \lstinline{Wait} or \lstinline{Acquire} \lstinline{Release} which introduce partial order semantics can't be easily reasoned about using our equivalences as they depend upon the dynamic execution state of our system.
-
-\chapter{Conclusions}
-
-\section{Unix Implementation in Koka}
-We have successfully realised the "Toy Unix" system described in Hillerström's paper, we provided implementations for exception handling, a basic IO scheme, user functionality, a basic serial file system, piping and two methods of process scheduling. We achieved the goal we set out to do namely, to show that we can implement a simulation of Unix, tackling the complex problems this presents, in a concise and modular way.
-
-\subsection*{Future Work}
-Implementing the process synchronisation features described in the previous chapter would provide vital functionality to our Unix system. Currently, if the system wants to perform writes in order, it can't do any interleaving, meaning that all writes are blocking defeating the purpose of a time-sharing system. Mutexes would provide a simple way to guarantee that resources can't be tampered with.
-
-\section{Reasoning}
-We successfully verified that our implementation of Unix follows the rules expected of it according to the Unix Specifications. We quickly ran into problems when trying to reason about anything which was not directly related to code structure, the dynamic state of the scheduler prevented us doing any reasoning about synchronisation or IPC.
-\subsection*{Future}
-Further reasoning about partial ordering of effectful operations using Waits and Mutexes. We could also implement a model of Local File Descriptor tables for processes and a global Open File Table. This would open up reasoning about sharing and isolation of state and how this aids modularity and functionality.  
-
-% \bibliographystyle{plain}
-\bibliographystyle{plain}
-\bibliography{mybibfile}
-
-
-% You may delete everything from \appendix up to \end{document} if you don't need it.
-\appendix
-
-\chapter{First appendix}
-
-\section{First section}
-
-Any appendices, including any required ethics information, should be included
-after the references.
-
-Markers do not have to consider appendices. Make sure that your contributions
-are made clear in the main body of the dissertation (within the page limit).
+\section{Environment Variable Proofs} \label{environment-variable-proofs}
 
 \chapter{Participants' information sheet}
 
