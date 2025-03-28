@@ -18,9 +18,9 @@
 \input{commands.tex}
 
 \lstdefinelanguage{Koka}{
-  keywords={fun, return,  var, match, if, then, else, do, with},
-  morekeywords=[2]{resume,val, handle, ctl, effect},
-  morekeywords=[3]{Sstate, Ready, Blocked, Proc, Nil, Cons},
+  keywords={fun, var, match, val, if, then, else, do,  type, struct},
+  morekeywords=[2]{return,resume, handle, ctl, with,effect},
+  morekeywords=[3]{Sstate, Ready, Blocked, Proc, Nil, Cons, string, int},
   sensitive=true,
   comment=[l]{//},
   morecomment=[s]{/*}{*/},
@@ -33,7 +33,7 @@
   keywordstyle=\color{purple},          % Group 1: basic syntax
   keywordstyle=[2]\color{blue},         % Group 2: effect-related
   keywordstyle=[3]\color{teal},         % Group 3: data constructors
-  commentstyle=\color{gray},
+  commentstyle=\color{green!80!black},
   stringstyle=\color{orange},
   breaklines=true,
   columns=fullflexible,
@@ -159,6 +159,13 @@ The objectives of this dissertation are:
 
 \section{Outline}
 
+Chapter 2 provides an introduction to the background and research surrounding effect handlers. It provides a brief description of the Unix System and why it provides an interesting model to implement using effect handlers. It will also describe how effects create computational trees which allow us to reason about code modularly.
+
+Chapter 3 outlines how we implemented the "Tiny Unix" system abstractly described in Hillerström's PhD thesis in Koka. It briefly discusses the advantages to modelling some of the control flow and scoping problems using effect handlers. It also discusses some of the difficulties encountered whilst trying to implement this system.
+
+Chapter 4 describes how we attempted to reason about our "Tiny Unix" implementation. It attempts to verify the correctness of features we implemented such as environment variables, the file system, nondeterminism and process synchronisation.   
+
+Chapter 6 states the conclusions we can draw from this project. It discusses the difficulties of doing this kind of reasoning and the lessons learned upon reflection. It also discusses some ideas of where else we could apply our reasoning techniques more effectively.
 
 \chapter{Background}
 
@@ -178,43 +185,6 @@ In languages like Java, chaining effectful operations can obscure where effects 
 
 In the context of functional programming, effect handlers provide a simple and lightweight method for managing side effects. They serve as a viable alternative to monads, offering a more flexible approach. Unlike monads, which can become rigid once defined, effect handlers allow for greater modification. Additionally, they simplify the combination of multiple side effects, avoiding the complexity of monad transformers. In some cases, effect handlers also offer better performance by eliminating the overhead of repeatedly wrapping and unwrapping values within monadic structures. 
 
-\section{Support for Effect Handlers}
-
-As of the time of writing this paper, effect handlers only have native support in research languages such as Koka and Effect. Some languages have concepts similar to effect handlers, for example the concept of hooks in React are similar to effect handlers in the way they allow you to handle side effects in functional components. 
-
-Features required to have a strong support for effect systems include: 
-\begin{itemize}
-    \item First class effect handlers
-    \item Delimited continuations
-    \item Optimisation for nested effects 
-    \item Effect Type System. 
-    \begin{itemize}
-        \item Ability to write custom effect types 
-        \item Effect signatures greatly eases reasoning about code and indicates purity vs impurity
-        \item Effect type safety and inference
-        \item Effect polymorphism
-
-
-    \end{itemize}
-    
-\end{itemize}
- 
-\subsection{Native Support}
-
-\begin{itemize}
-    \item Eff \cite{eff_effects}: This language is specifically designed for algebraic effects and effect handlers. It has support for first class effect handlers, delimiting effects and abstract effects
-    \item Koka \cite{koka_effects}: This supports effect type inference, strongly distinguishes between pure and impure computations
-    \item MultiCore OCaml \cite{ocaml_effects}: An official extension for OCaml which provides effect typing, first class effect handlers and strong pattern matching. integrates well with handling effect cases
-\end{itemize}
-
-
-\subsection{Library Support}
-Many languages have their own libraries which attempt to implement effect handlers. These implementations often come with downsides compared to native implementations. Languages which don’t have first class functions which makes it difficult to compose effects. Languages lacking an advanced type system find it difficult to create flexible and reusable handlers. Often languages’ type systems don’t provide type inference and ensure type safety for effects. They are also not optimised to track the multiple layers of context that an effect handler may produce. Despite this, there are some languages with effective third party libraries for using effect handlers.
-
-\begin{itemize}
-    \item Haskell \cite{haskell_effects}: The polysemy library provides a strong implementation of effect handlers, including first class effect handlers, effect polymorphism, effect type inference. However its limited support makes it impractical to use so far.
-    \item Scala \cite{scala_effects}: The Cats Effect library has good performance and provides effect type polymorphism. However it doesn’t provide first class effect handlers or directly support delimited continuations.
-\end{itemize}
 
 \section{Syntax for Effect Handlers}
 
@@ -260,8 +230,17 @@ Deep handlers \cite{hillerstrom_foundations_nodate} handlers can handle all the 
 In contrast, shallow handlers \cite{ryu_shallow_2018} only manages the first effect caused by a computation. The resumed program no longer includes the handler and the programmer needs to provide a new handler for an effect the resumption may perform.
 Deep and Shallow handlers can simulate each others behaviour. However it may make more sense to use one type over another in certain contexts. Most languages only support one or the other. As of 2024 deep handlers are the more popular choice amongst effect oriented languages.
 
-We can think of effects forming a computational tree. Each effect is a node which can have subtrees which represent its continuations. The leaves are return expressions which are pure values. A deep handler for an effect is like a fold over the computational tree which provides an interpretation to each instance of that effect given its leaves and subtrees. Just like a fold the deep handler will recursively handle the current operation, and all of its subtrees (continuations). This makes deep handlers easy to reason about as we can assume the way that the continuation will be interpreted will be consistent and has an algebraic structure.
+\subsection{Effects as Computational Trees}
+
+We can think of effects forming a computational tree, we can illustrate the difference between Shallow and Deep handlers by describing how each evaluates this computational tree differently. The leaves represent finished computations i.e. pure return values. Each effect is a node which passes control to an effect handler for interpretation. From the operation, the effect handler receives what is known as a resumption, a first class syntactic representation of the continuation, i.e. the remaining computation immediately following the operation being handled. 
+
+The effect handler can; resume the computation with a value (think of a read operation returning its result), cause branching in the computational tree by introducing multiple resumptions, or it could just return a value skipping resuming the computation entirely (as is the case in an exception ). 
+
+A deep handler for an effect is like a fold over the computational tree which provides an interpretation to each instance of that effect given its leaves and subtrees. Just like a fold the deep handler will recursively handle the current operation, and all of its subtrees (continuations). This makes deep handlers easy to reason about as we can assume the way that the continuation will be interpreted will be consistent and has an algebraic structure.
+
 However a shallow handler does not recurse like this, it is only applied to the first effect it sees. It must be explicitly reapplied to continuations if we want their effects to be interpreted too. This makes it harder to do formal reasoning for but it makes it more flexible control over how you handle effects.
+
+\section{Reasoning}
 
 
 \section{Unix}
@@ -405,8 +384,6 @@ This is designed to be used in code such as:
     else{
         /// ... child specific code
     }
-    
-    // code executed by the child and the parent
 \end{lstlisting}
 This is a simple way of writing code for two programs within the same file.
 
@@ -507,7 +484,7 @@ val fs0 : fileSystem =
   )
 \end{lstlisting}
 
-\subsection*{File Reading and Writing}
+\subsection{File Reading and Writing}
 
 We define effects for reading and writing for our file system. The effect \texttt{read} is parameterised with an iNode number and returns an \texttt{Option<String>} type which indicates success or failure to read from the specified iNode. The \texttt{write} operation takes an integer to denote the iNode and a string to append to the file associated with this iNode. It does not indicate whether or not the write succeeded.
 
@@ -560,7 +537,7 @@ fun fileRW<a>(m: () -> <fileRW,div,state<fileSystem>|e>a) : <state<fileSystem>,d
 
 This is the handler for read and write operations in our system. We wrap \texttt{read} and \texttt{write} operations with \texttt{withDefault} to provide error handling, we make failures in lookup and modify functions correspond to None.
 
-\subsection*{File Creation and Opening}
+\subsection{File Creation and Opening}
 
 We define effects for creating and opening files:
 
@@ -602,15 +579,13 @@ fun fcreate(fname: string, fs: fileSystem) : <div,fail> (int, fileSystem)
     (ino, FileSystem(fs.dir, fs.ilist, dreg', fs.dnext, fs.inext))  
   }
   else {
-    val loc = fs.dnext  // Get next free data block
+    val loc = fs.dnext  // next free data block index
     val dreg' = DataRegion(Cons((loc, ""), fs.dreg.dr))  
-
-    val ino = fs.inext  // Get next free i-node index
-    val inode = INode(loc, 1)  // Create a new i-node
+    val ino = fs.inext  // next free i-node index
+    val inode = INode(loc, 1)  
     val ilist' = IList(Cons((ino, inode) , fs.ilist.il))  
-
-    val dir' = Directory(Cons((fname, ino), fs.dir.d_list))  
-
+    val dir' = Directory(Cons((fname, ino), fs.dir.d_list))
+    
     val fs' = FileSystem(dir', ilist', dreg', fs.dnext + 1, fs.inext + 1)  
     (ino, fs')
   }
@@ -649,7 +624,7 @@ fun fileCreateOpen<a>(action : () -> <fileCO, div, state<fileSystem>|e> a) : <st
   action()
 \end{lstlisting}
 
-\subsection*{Stream Redirection}
+\subsection{Stream Redirection}
 We define the stream redirection operator \texttt{>} to allow us to redirect output streams from processes to files. This is an essential feature for composing commands, enabling pipelines as it allows us to build pipelines without need for explicit intermediate storage.
 
 
@@ -657,7 +632,7 @@ We define the stream redirection operator \texttt{>} to allow us to redirect out
     //
 \end{lstlisting}
 
-\subsection*{File Linking and Unlinking}
+\subsection{File Linking and Unlinking}
 We will implement two new operations, linking and unlinking files. There are 2 main types of link in Unix, hard and symbolic. We will implement hard links, this means that multiple file names can point to the same iNode. This allows us to create multiple references to the same underlying file.
 
 \begin{lstlisting}
@@ -688,17 +663,33 @@ fun flink(src : string, dest : string, fs : fileSystem) : <div,fail> fileSystem 
 \end{lstlisting}
 
 
-\subsection*{Piping}
+\section{Piping}
+Piping is a core feature of Unix. It is so important as it allows the composability of processes. This allows programs to focus on writing small, modular which they can compose together rather than having to write monolithic programs.
+
+These signatures show the produce and consume effects required to implement piping. \lstinline{produce} is parameterised by a value of type b allowing it to yield a value to the read-end. Conversley the \lstinline{consume} has a return type of \lstinline{b}, indicating that it awaits for a value.
 \begin{lstlisting}
 effect produce<b>
-  ctl yield(x : b) : ()   
+  ctl produce(x : b) : ()   
 
 effect consume<b>
-  ctl await() : b         
+  ctl consume() : b         
 
 \end{lstlisting}
 
-\subsection*{Process Synchronisation}
+Using shallow handlers, pipe and copipe mutually recurse to handle \lstinline{consume} and \lstinline{produce} effects. In our system this is handled as a function, whereas in Unix these are implemented as processes which allow for concurrency.
+
+\begin{lstlisting}
+fun pipe<a,b,e>(p : () -> <produce<b>|e> a,c : () -> <consume <b>|e> a) : e a
+    with raw ctl consume()
+        copipe(fn(x) rcontext.resume-shallow(x), p)
+        return(x) -> x
+
+fun copipe(c : b -><consume<b>, div|e>, c : () -> <produce<b>, div|e> a): <div|e> a
+    with raw ctl produce(y)
+        pipe(fn() rcontext.resume-shallow(()), fn() c(y))
+\end{lstlisting}
+
+\section{Process Synchronisation}
 
 In this section we introduce more advanced techniques for process scheduling. The current system is purely non-deterministic, it does not give us any control over how these processes interact. This new scheduler allows us to coordinate processes by controlling the order in which processes are executed, vital for executing tasks which have temporal dependencies. This introduces more invariants and partial ordering.
 
@@ -741,7 +732,6 @@ fun runNext<a>(st: sstate<a> ) : <div,co|e> list<(int,a)>
     Nil -> st.done
     Cons((bpid, Blocked(pid', proc)), ps) -> 
       val newQ = ps ++ [(bpid, Blocked(pid', proc))]
-      
       val newsState =  Sstate (q = newQ, done = st.done, pid = st.pid, pnext = st.pnext)
       runNext(newsState) 
     Cons((rpid, Ready(proc)), ps) -> 
@@ -791,9 +781,10 @@ fun scheduler<a,e>(comp : () -> <co,div> a, init : sstate<a>) : <div|e> list<(in
   comp()
 \end{lstlisting}    
 
-\subsection*{Chapter Conclusion}
+\section{Chapter Conclusion}
 
 In this chapter we have shown how effect handler oriented programming provides a clean, modular and composable framework for implementing complex control flow and dynamic scoping problems. Using a Unix-like system as a case study, we demonstrated how features such as file I/O, environment variables, process forking, and scheduling can each be modelled as distinct effects and handled independently. This implementation phase will demonstrate that the same modular handler-based abstractions that aid program design will also support program verification.
+
 
 
 
@@ -849,37 +840,51 @@ We will use these equivalences to:
 \subsection{Simplified single-cell state}
 
 \label{subsec:simplified-state}
-We begin by reasoning about a minimal model of state, consisting of a single global cell and get and set operations. These handlers were taken from Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. Although this model is deliberately simple, the reasoning principles it demonstrates are general. We will see that the same basic properties of state we prove here arise in more complex examples later on.  
+We begin by reasoning about a minimal model of state, consisting of a single global cell and get and put operations. These handlers were taken from Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. Although this model is deliberately simple, the reasoning principles it demonstrates are general. We will see that the same basic properties of state we prove here arise in more complex examples later on.  
+
+\begin{figure}[H]
+\centering
+
+\[
+\textbf{State} := \left\{
+\mathsf{get} : 1 \rightsquigarrow S, \quad
+\mathsf{put} : S \rightsquigarrow 1
+\right\}
+\]
 
 \handlerDef{state}{
     &\text{get}(\_, k) \mapsto \text{fun s} \rightarrow (k\ s)\ s \\
-    &\text{set}(s, k) \mapsto \text{fun } \_ \rightarrow (k\ () )\ s \\
+    &\text{put}(s, k) \mapsto \text{fun } \_ \rightarrow (k\ () )\ s \\
     &\text{return}\ x \mapsto \text{fun } \_ \rightarrow \text{return } x 
 }
 
-To briefly explain this handler, the get operation returns a function which is parametrised by the current state \lstinline{s}. It takes this value of state into the continuation \lstinline{k}. This provides a return value to the get operation in the continuation \lstinline{k}. The second \lstinline{s} in the function body rethreads the current state back into the continuation, without this second application, state would not be preserved for subsequent operations. 
-The set clause returns a function that takes a parameter, representing the prior state, but immediately discards it. Since we are working within a single-cell state model, the previous state is irrelevant as it is about to be overwritten by the new state value. The continuation is applied to () (as a set operation returns no meaningful result), and the resulting computation is run under the new state \lstinline{s}, thereby establishing \lstinline{s} as the current state for the rest of the computation.
+\caption{The \textbf{State} effect signature and its interpretation by the \textit{state} handler}
+\label{fig:state-handler}
+\end{figure}
 
-We use this handler to establish four fundamental state laws. These form a minimal basis for reasoning about state, capturing the essential behaviour of get and set, and allowing us to reason algebraically about arbitrary sequences of state operations.
+To briefly explain this handler, the get operation returns a function which is parametrised by the current state \lstinline{s}. It takes this value of state into the continuation \lstinline{k}. This provides a return value to the get operation in the continuation \lstinline{k}. The second \lstinline{s} in the function body rethreads the current state back into the continuation, without this second application, state would not be preserved for subsequent operations. 
+The put clause returns a function that takes a parameter, representing the prior state, but immediately discards it. Since we are working within a single-cell state model, the previous state is irrelevant as it is about to be overwritten by the new state value. The continuation is applied to () (as a put operation returns no meaningful result), and the resulting computation is run under the new state \lstinline{s}, thereby establishing \lstinline{s} as the current state for the rest of the computation.
+
+We use this handler to establish four fundamental state laws. These form a basis for reasoning about state, capturing the essential behaviour of get and put, and allowing us to reason algebraically about arbitrary sequences of state operations.
 
 \begin{itemize}
-    \item Set-Set 
-    \item Set-Get
-    \item Get-Set
+    \item Put-Put 
+    \item Put-Get
+    \item Get-Put
     \item Get-Get
 \end{itemize}
 
-As these proofs take up a lot of space, in the interest of brevity, we will only show one example here. The complete set of proofs are attached in appendice \ref{full-simplified-single-cell-state-proof} 
+As these proofs take up a lot of space, in the interest of brevity, we will only show one example here. The complete put of proofs are attached in appendice \ref{full-simplified-single-cell-state-proof} 
 
-\subsubsection*{Idempotence of Set}
-Performing consecutive \lstinline{set} operations retains only the final update, as each invocation completely overwrites the current state:
+\subsubsection*{Idempotence of Put}
+Performing consecutive \lstinline{put} operations retains only the final update, as each invocation completely overwrites the current state:
 \[
 \begin{aligned}
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{set} \; a \; (x. \operatorname{set} \; b \; (y. C)) \\
+    &\quad \operatorname{put} \; a \; (x. \operatorname{put} \; b \; (y. C)) \\
     &\equiv \\
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
-    &\quad \operatorname{set} \; b \; (y. C)
+    &\quad \operatorname{put} \; b \; (y. C)
 \end{aligned}
 \]
 
@@ -888,11 +893,11 @@ Performing consecutive \lstinline{set} operations retains only the final update,
 
 \begin{align*}
 &\equiv\quad (11) \\
-&\text{fun } \_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \textbf{with state handle } set(b)(y.C)/k] \\
+&\text{fun } \_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \textbf{with state handle } put(b)(y.C)/k] \\
 &\equiv\quad (\text{subst}) \\
-&\text{fun } \_ \rightarrow ((\text{fun } x \rightarrow \textbf{with state handle } set(b)(y.C))\ ())\ a \\
+&\text{fun } \_ \rightarrow ((\text{fun } x \rightarrow \textbf{with state handle } put(b)(y.C))\ ())\ a \\
 &\equiv\quad (8) \\
-&\text{fun } \_ \rightarrow (\textbf{with state handle } set(b)(y.C))\ a \\
+&\text{fun } \_ \rightarrow (\textbf{with state handle } put(b)(y.C))\ a \\
 &\equiv\quad (11) \\
 &\text{fun } \_ \rightarrow (\text{fun } \_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \textbf{with state handle } C/k])\ a \\
 &\equiv\quad (\text{subst}) \\
@@ -903,25 +908,6 @@ Performing consecutive \lstinline{set} operations retains only the final update,
 &\text{fun } \_ \rightarrow (\textbf{with state handle } C)\ b
 \end{align*}
 
-
-\[ 
-\begin{array}{l}
-\quad\equiv\quad (11) \\[5pt]
-\text{fun }\_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C)/k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun }\_ \rightarrow ((\text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ ())\ a \\[5pt]
-\quad\equiv\quad (8) \\[5pt]
-\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ a \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C/k])\ a \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (\text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C)\ ())\ b)\ a \\[5pt]
-\quad\equiv\quad (8) \\[5pt]
-\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } C)\ b)\ a \\[5pt]
-\quad\equiv\quad (\text{application}) \\[5pt]
-\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } C)\ b
-\end{array}
-\]
 
 \underline{Right Hand Side}
 \[ 
@@ -939,8 +925,11 @@ LHS $\equiv$ RHS
 
 
 
-\subsection{Verifying the implementation of environment variables}
+\subsection{Verifying the Implementation of Environment Variables}
 This simplified model provides us with a great way to verify the concrete implementation of environment variables in our system. These handlers form an example of single-cell state where the operations Su(user) corresponds to set(x) and Ask() corresponds to get:
+
+\begin{figure}[H]
+\centering
 
 \[
  \text{sessionmgr} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=} \;
@@ -954,12 +943,12 @@ This simplified model provides us with a great way to verify the concrete implem
 \[
 \begin{array}{l}
 \\
-\text{env} \langle \mathit{user}, m \rangle \;\overset{\mathrm{def}}{=} \;
+\text{env} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=} \;
 \textbf{handle}\; m \langle \rangle\; \textbf{with} \left\{
 \begin{array}{ll}
 \textbf{return}\; res  \mapsto res \\
 \langle \text{Ask} \langle \rangle \Rightarrow \textbf{resume} \rangle  \mapsto \\
-\quad\quad\quad\quad\quad\textbf{case}\; \mathit{user}\; \left\{
+\quad\quad\quad\quad\quad\textbf{case}\; \mathit{u}\; \left\{
 \begin{array}{ll}
 \text{Alice} & \mapsto \textbf{resume}\; \text{"alice"} \\
 \text{Bob} & \mapsto \textbf{resume}\; \text{"bob"} \\
@@ -970,6 +959,9 @@ This simplified model provides us with a great way to verify the concrete implem
 \right\}
 \end{array}
 \]
+\caption{Effect signature and handler implementation for environment variables in Tiny Unix}
+\label{fig:env-state-handler}
+\end{figure}
 
 State is implemented somewhat differently in this system, instead of being passed as a parameter into each continuation it uses an approach called dynamic binding. The environment is not passed explicitly, instead it is scoped dynamically by the handler itself. This allows dynamic scoping where the same variable can be bound to different values in different contexts in during execution. We will see how this becomes useful later on in the context of process management, but for now we will verify that this implementation follows the same state laws as before.
 
@@ -1017,7 +1009,7 @@ We provide one example here and attach the rest in the appendices \ref{environme
 \section{Multi-Cell State}
 
 
-\subsection{Simplified Multicell State}
+\subsection{Basic Multicell State}
 
 This simplified system is less accurate to Unix than Hillerström's "Tiny Unix" but maintains the key functionality (however it loses file linking functionality). From now on we will attempt to reason about how state will interact with other features in our system such as nondeterminism and concurrency. 
 
@@ -1034,7 +1026,8 @@ This handler for multi-cell state generalises the single-cell model we introduce
 \]
 
 
-In addition to the properties that held in the single-cell state model, which hold for each key independently, the multicell model allows us to derive additional algebraic properties: commutativity of operations on disjoint keys. These properties capture the algebraic independence of effects targeting separate parts of the state and are formalised by the following equivalences:
+In addition to the properties that held in the single-cell state model, which hold for each key independently, the multicell model allows us to derive additional algebraic properties, the commutativity of operations on disjoint keys. These properties capture the algebraic independence of effects targeting separate parts of the state and are formalised by the following equivalences stated in Pretnar's "The Logic and Handling of
+Algebraic Effects" \cite{Pretnar:2010}:
 \begin{enumerate}
     \item Disjoint Write-Write Commutativity
     \[set(k1,v1);set(k2,v2) \equiv set(k2,v2);set(k1,v1)\] 
@@ -1056,30 +1049,61 @@ Performing operations such as file writing or creation involved updating global 
 
 
 \section{Process Forking - Non Determinism}
-Process forking introduces nondeterministic branching into our system which exhibits a number of interesting algebraic properties. By first establishing these properties in isolation we provide a basis for understanding how forking composes with other effects. In subsequent sections we will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
+
+Process forking introduces nondeterministic branching into our system which exhibits a number of interesting algebraic properties. By first establishing these properties in isolation we provide a basis for understanding how forking composes with other effects in our system. In subsequent sections we will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
+
+Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system.
 
 
+\subsection{Equational Theories of Non Determinism}
+Abstract notions of nondeterminism state that is is modelled by an abstract algebraic structure known as a join semi-lattice \cite{kiselyov2021extensible} nondeterminism which is governed by the following algebraic properties:
+
+\begin{figure}[H]
+\centering
+\[
+\begin{array}{ll}
+  A \oplus A \equiv A & \text{(Idempotency)} \\
+  A \oplus B \equiv B \oplus A & \text{(Commutativity)} \\
+  A \oplus (B \oplus C) \equiv (A \oplus B) \oplus C & \text{(Associativity)}
+\end{array}
+\]
+\caption{%
+  Equational theory of nondeterminism.
+}
+\end{figure}
+
+
+
+
+
+
+
+
+
+\subsection{Properties of Tiny Unix Forking}
+
+
+\begin{figure}[H]
+\centering
 \[
 \text{nondet} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
 \begin{array}{ll}
 \text{Fork}() &\mapsto \text{\textbf{resume} True ++ \textbf{resume} False} \\
-
 \textbf{return } x &\mapsto \textbf{return } [x]
 \end{array}
 \right\}
 \]
-
-Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system.
-
-\subsection*{Associativity of Forking}
-Associativity is a core structural law of algebraic operations, stating that the grouping of operations does not affect the overall behaviour of a computation.
-
-\[
-(A \oplus B) \oplus C \quad \equiv \quad A \oplus (B \oplus C)
-\]
-In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
+\caption{Tiny Unix's implementation of nondeterminism}
+\label{nondetImplementation}
+\end{figure}
 
 
+Unfortunately, in Hillerström's implementation of nondeterminism \ref{nondetImplementation}, forking is neither commutative nor associative. This makes sense for idempotency as two identical processes are clearly not equivalent to one process. Commutativity is not valid either as the order in which the processes are returned could affect observational behaviour when under scheduling.
+
+
+However, in the abscenece of other effects, forking is associative. In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
+
+\vspace{-2em}
 \begin{figure}[H]
     \centering
 
@@ -1679,10 +1703,6 @@ Reasoning about the scheduler is very difficult because it introduces non-determ
 
 
 
-\subsection*{How Wait Distributes Over Fork}
-
-
-This proof shows how \texttt{wait} interacts with \texttt{fork}. Both resumptions produced by the \texttt{pid\_nondet} handler perform a \texttt{wait}. In the parent process, \texttt{wait(pid)} refers to the child and corresponds to a standard blocking operation. In the child process, \texttt{Fork()} returns \texttt{0} to indicate that it is the newly created process. Since there is no process with PID \texttt{0} in the queue, \texttt{wait(0)} has no effect and acts as a no-op, returning \texttt{()}.
 
 
 
