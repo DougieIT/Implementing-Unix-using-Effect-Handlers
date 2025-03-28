@@ -12,6 +12,7 @@
 \usepackage{tabularx} % Include this in the preamble
 \usepackage{float}
 \usepackage{longtable}
+\usepackage{url}
 
 
 \usepackage{amssymb}
@@ -255,9 +256,13 @@ Unix is an operating system developed by Bell Labs in the 1970s. Its aim is to c
 Unix is built on the “Unix Philosophy” which follows the principles of simplicity and modularity. The “everything is a file” philosophy of Unix provides a consistent interface for us to interact with system resources. This will allow us to separate functionality into modules and implement them using effect handlers.
 
 \section{Evaluating Previous work}
-Daniel Hillerström has implemented a theoretical implementation of Unix in his 2021 paper “Foundations for Programming and Implementing Effect Handlers” \cite{hillerstrom_foundations_nodate}. He makes analogy between operating systems and effect handlers that both interpret a series of abstract commands, in the case of the OS this is system calls, in the case of effect handlers, this is operations. The composition of effect handlers, which he views as “tiny operating systems” can provide semantics for a Unix implementation. He uses deep handlers to implement; multiple user sessions, time-sharing and file IO.
+Daniel Hillerström has implemented a theoretical implementation of Unix in his 2021 paper “Foundations for Programming and Implementing Effect Handlers” \cite{hillerstrom_foundations_nodate}. He makes analogy between operating systems and effect handlers that both interpret a series of abstract commands, in the case of the OS this is system calls, in the case of effect handlers, this is operations. The composition of effect handlers, which he views as “tiny operating systems” can provide semantics for a Unix implementation. He uses deep handlers to implement; multiple user sessions, time-sharing and file IO. This paper will use Koka to create a concrete implementation of the abstract syntax he used in his paper. Then we will implement proof using algebraic equivalences to show our implementation holds.
 
-This paper will use Koka to create a concrete implementation of the abstract syntax he used in his paper. Then we will implement proof by inductions to show certain properties about effect handlers.
+There are several papers which have examined reasoning about effect handlers. Pretnar's "The Logic and Handling of Algebraic Effects" \cite{Pretnar:2010} uses algebraic equations to reason about abstract properties of state, exceptions and nondeterminism. The PhD thesis "Relational Reasoning for Effects and Handlers" by McLaughlin \cite{McLaughlin2020} used automated reasoning techniques to reason about reason about the correctness of an effect handler implementation for Unix-style pipes. 
+
+Perhaps the most interesting is "Not by equations alone: Reasoning with extensible effects" by Oleg Kiselyov, Shin-Cheng Mu and Amr Sabry \cite{kiselyov2021extensible}. This paper outlines the limitations of using equational laws to reason about effectful programs. It shows how composition can break down algebraic laws which held in isolation. It suggests stronger notions of congruence, i.e. proving expressions are equivalent under different contexts are required.
+
+
 
 \chapter{Unix Implementation}
 Having described the theoretical benefits of effect handlers in the previous chapter, this chapter shows the practical implementation of the "Tiny Unix" system written by Hillerström in the Koka programming language. 
@@ -795,11 +800,7 @@ An external observer refers to anything outside the computation itself, includin
 
 Effect handlers make this kind of reasoning possible by making effects explicit and providing a clear separation between where effects are invoked and how they are handled, enabling formal reasoning with algebraic rules.
 
-We will use these equivalences to:
-\begin{itemize}
-    \item prove that key features of our Unix implementation are correct. 
-    \item we will examine interesting properties of these operations, individually and behaviour that arise out of their composition. 
-\end{itemize}
+We aim to verify the correctness of our Unix implementation. Where associated algebraic theories exist for the effects we model, such as state or nondeterminism, we aim to show our implementations satisfies the laws of those theories. In the case where no established equational theory applies, we instead provide reasoning to demonstrate the implementation behaves as intended.
 
 
 \begin{figure}[H]
@@ -974,7 +975,10 @@ State is implemented somewhat differently in this system, instead of being passe
     
 
 We provide one example here and attach the rest in the appendices \ref{environment-variable-proofs}
-\subsubsection*{Su(user\_j) Su(user\_k)}
+\subsubsection*{Switch-user, Switch-user}
+
+sessionmgr<Root, 
+
 \[
 \begin{array}{l}
 \textbf{sessionmgr} \langle \mathit{user}_i,\; \textbf{Su}(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C)) \rangle \\[5pt]
@@ -1000,7 +1004,8 @@ We provide one example here and attach the rest in the appendices \ref{environme
 \quad\equiv\quad (\text{subst}) \\[5pt]
 \textbf{with }\text{env} \langle \mathit{user}_i \rangle\; \textbf{handle} \\
 \quad\textbf{with }\text{env} \langle \mathit{user}_j \rangle\; \textbf{handle} \\
-\qquad\textbf{with }\text{env} \langle \mathit{user}_k \rangle\; \textbf{handle}\; C
+\qquad\textbf{with }\text{env} \langle \mathit{user}_k \rangle\; \textbf{handle}\; \\
+\quad\quad\quad C
 \end{array}
 \]
 
@@ -1009,7 +1014,7 @@ We provide one example here and attach the rest in the appendices \ref{environme
 \section{Multi-Cell State}
 
 
-\subsection{Basic Multicell State}
+\subsection{Basic Multi-cell State}
 
 This simplified system is less accurate to Unix than Hillerström's "Tiny Unix" but maintains the key functionality (however it loses file linking functionality). From now on we will attempt to reason about how state will interact with other features in our system such as nondeterminism and concurrency. 
 
@@ -1041,6 +1046,15 @@ These properties are vital as they allow for reasoning about different parts of 
 
 
 \subsection{Verifying Tiny Unix's File System}
+
+The \textit{"Single UNIX Specification"} does not provide as algebraic theory that its conforming systems must implement. Instead it relies on textual documentation describing syntax and semantics. However we can still reason about its intended functionality in terms of the mapped state laws above.
+
+\begin{itemize}
+    \item Reading/Writing/Opening a file which doesn't exist
+    \item File linking breaking disjoint key write commutativity 
+    \item Dangling symbolic link
+\end{itemize}
+
 Unfortunately attempting to reason about the state model directly in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply equational reasoning techniques, each small step in the computation rapidly branched out due to the way different layers of the file system, directories, inodes, and data blocks, depended on one another.Unlike in the simplified examples, reasoning about the serial file system's correctness depended on the interaction between multiple nested data structures, namely; the Directory, the i-node list, the data region. 
 
 Each structure relied on invariants maintained by the others: directory entries had to point to valid i-nodes, i-nodes had to reference valid and allocated data blocks, and all pointers needed to remain consistent throughout execution. This tight coupling made it difficult to reason about each component in isolation.
@@ -1056,7 +1070,7 @@ Whilst the algebraic structure of forking is defined in the effect handler, the 
 
 
 \subsection{Equational Theories of Non Determinism}
-Abstract notions of nondeterminism state that is is modelled by an abstract algebraic structure known as a join semi-lattice \cite{kiselyov2021extensible} nondeterminism which is governed by the following algebraic properties:
+Abstract notions of nondeterminism state that is is modelled by an abstract algebraic structure known as a join semi-lattice \cite{kiselyov2021extensible} which is governed by the following algebraic properties:
 
 \begin{figure}[H]
 \centering
