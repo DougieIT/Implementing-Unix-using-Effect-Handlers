@@ -12,7 +12,7 @@
 \usepackage{tabularx} % Include this in the preamble
 \usepackage{float}
 \usepackage{longtable}
-\usepackage{url}
+\usepackage{hyperref}
 
 
 \usepackage{amssymb}
@@ -100,20 +100,24 @@
 
 \abstract{
 
-Algebraic effect provide a structured and modular way to reason about computational effects, such as exceptions, state and concurrency. Most imperative programming languages do not provide a structured method of handling effects, and functional approaches such as Monads lead to poor modularity and composability issues.
+Most imperative programming languages do not provide a structured facility for handling effects, and functional approaches such as Monads lead to poor modularity and composability issues \cite{monad}. 
 
-Effect handlers have emerged as a flexible, first-class mechanism to define and interpret effects dynamically. It is particularly useful for modelling complex control flows were it has found use in Multicore OCaml. 
 
-Unix was developed in the 1970s at Bell Labs to provide a new approach to operating system design. Prior operating systems were typically monolithic and hardware specific. Unix's was designed to be a small, portable and multi-user operating system which emphasised simplicity, modularity and composability. 
-Its key innovations were
+Recently, though, Algebraic effect handlers have emerged as a flexible, first-class mechanism to define and interpret effects dynamically. This approach provides a structured and modular way to reason about computational effects, such as exceptions, state, and concurrency, and is particularly useful in modelling complex control flows. As a result, it proves effective in addressing some of the challenges involved in implementing a Unix-like system.
+ \cite{}. 
+
+
+Unix was first developed in the 1970s at Bell Labs \cite{Unix} to provide a new approach to operating system design. Prior to this, operating systems were typically monolithic and hardware specific. Unix was designed to be a small, portable and multi-user operating system, which emphasised simplicity, modularity and composability. Its key innovations were: 
+
 \begin{itemize}
-    \item Everything is a file - a unified abstraction for devices, processes and data
-    \item Pipes and redirection - provides a mechanism to compose commands into programs
-    \item Simplified interface - provides a small set of system calls for a consistent way of interacting with; process management, file handling and I/O
+    \item Everything is treated as a file – a unified approach that simplifies interaction with devices, processes, and data. 
+    \item Pipes and redirection - enable seamless composition of commands into larger programs.
+    \item Simplified interface - offers a minimal set of system calls, ensuring a consistent approach to process management, file handling, and I/O.
 \end{itemize}
 
-This dissertation is composed of two parts. The first part implements the "Tiny Unix" system described in Hillerström's "Foundations for Programming and Implementing Effect Handlers". This is written in the Koka programming language to provide a modular and composable implementation of Unix functionality. The second part uses algebraic equivalence rules from Pretnar's "An Introduction to Algebraic Effects and Handlers" to perform reasoning on the implementation, we determine the properties of this implementation and how it compares to standard Unix implementations. 
+This dissertation consists of two parts. In the first part I implement the "Tiny Unix" system described in Hillerström’s \textit{Foundations for Programming and Implementing Effect Handlers} \cite{hillerstrom_foundations_nodate}. Written in the Koka programming language, this implementation provides a modular and composable approach to Unix functionality. 
 
+In the second part, I apply algebraic equivalence rules from Pretnar’s \textit{An Introduction to Algebraic Effects and Handlers} \cite{pretnar_introduction_2015} to analyse the implementation. By leveraging these rules, we can evaluate its properties and compare it to standard Unix implementations. Since certain algebraic standard effects have associated equational theories, we are also able to verify that our implementation adheres to these theoretical foundations.
 
 
 }
@@ -134,7 +138,7 @@ from the Informatics Research Ethics committee.
 
 
 \begin{acknowledgements}
-Any acknowledgements go here.
+I would like to express my sincere thanks to Dr. Sam Lindley for his helpful suggestions, insightful feedback, and valuable input throughout the development of this dissertation. His guidance has been greatly appreciated. I would also like to thank Jesse Sigal for his support and for generously sharing his knowledge and time, which were both immensely helpful during my research.
 \end{acknowledgements}
 
 
@@ -144,29 +148,36 @@ Any acknowledgements go here.
 
 \chapter{Introduction}
 \section{Motivation}
-Effect handlers are increasingly used to manage computational effects in programming. Unix provides a useful model for exploring their application, as its abstract system calls serve as an interface for programs to interact with the OS, similarly to how effects provide an interface for programs to cause side effects. In this project, we implement these system calls using effect handlers, representing each system call as an algebraic effect. Effect handlers provides us with a simple way of modelling Unix's complicated state and control flow problems, whilst also providing us a way to formally reason about our solutions. This project will show how effect handlers can be used in a practical context to implement features in a composable way. It show cases one of the main advantages to using effect handlers, the ability reason about our code, this is particularly useful for reasoning about complicated control flows. 
+Effect handlers are increasingly being explored as a way to manage computational effects in programming. Unix provides a useful model for exploring their application, as its abstract system calls serve as an interface for programs to interact with the OS, similarly to how effects provide an interface for programs to cause side effects. 
 
-
+In this project, we implement these system calls using effect handlers, representing each as an algebraic effect to achieve a concise and modular design. Effect handlers offer a simple and principled way to model Unix’s complex state and control flow challenges, while also enabling formal reasoning about our solutions. I will demonstrate how effect handlers support composable implementations and enhance our ability to reason about intricate control flows, one of their key advantages.
+Key motivations and observations include:
+\begin{itemize}
+    \item \textcolor{red}{Unix’s abstract system calls resemble the concept of effect handlers, in that both represent abstract effectful operations whose implementations can vary depending on context.}
+    \item \textcolor{red}{Modelling Unix introduces complex control and scoping issues, which can be handled more naturally in effect-oriented languages compared to imperative approaches. }
+\end{itemize}
 
 
 \section{Aims}
-The objectives of this dissertation are:
+This dissertation aims to:
 \begin{itemize}
-    \item Provide back ground for effect handler oriented programming and how it models the Unix philosophy well
-    \item Implement the "Tiny Unix" system that Hillertstrom describes in his thesis
-    \item Perform algebraic reasoning techniques on the implementation to show it meets the required specifications. 
+    \item Outline the theory behind effect handler-oriented programming and provide relevant background on the Unix system, explaining the suitability in using effect handlers to model Unix.
+    \item Implement the "Tiny Unix" system in Koka as described in Hillerström's thesis \cite{hillerstrom_foundations_nodate}.
+    \item Apply algebraic reasoning techniques to verify that our implementation meets the required Unix specifications. 
+    \item Reflect on the effectiveness of using these formal techniques.
     
 \end{itemize}
 
 \section{Outline}
 
-Chapter 2 provides an introduction to the background and research surrounding effect handlers. It provides a brief description of the Unix System and why it provides an interesting model to implement using effect handlers. It will also describe how effects create computational trees which allow us to reason about code modularly.
+\textbf{Chapter 2} introduces the background and research surrounding effect handlers. It provides a brief overview of the Unix system and explains why it serves as an interesting model to implement using effect handlers. The chapter also explores how effects give rise to computational trees, enabling modular reasoning about code.
 
-Chapter 3 outlines how we implemented the "Tiny Unix" system abstractly described in Hillerström's PhD thesis in Koka. It briefly discusses the advantages to modelling some of the control flow and scoping problems using effect handlers. It also discusses some of the difficulties encountered whilst trying to implement this system.
+\textbf{Chapter 3} outlines the implementation of the "Tiny Unix" system, as described abstractly in Hillerström's PhD thesis, using the Koka language. It discusses the advantages of modelling certain control flow and scoping issues with effect handlers, as well as the challenges encountered during implementation.
 
-Chapter 4 describes how we attempted to reason about our "Tiny Unix" implementation. It attempts to verify the correctness of features we implemented such as environment variables, the file system, nondeterminism and process synchronisation.   
+\textbf{Chapter 4} focuses on reasoning about the “Tiny Unix” implementation. It examines attempts to verify the correctness of features such as environment variables, the file system, nondeterminism, and process synchronisation using algebraic reasoning techniques.
 
-Chapter 6 states the conclusions we can draw from this project. It discusses the difficulties of doing this kind of reasoning and the lessons learned upon reflection. It also discusses some ideas of where else we could apply our reasoning techniques more effectively.
+\textbf{Chapter 5} presents the conclusions drawn from this project. It reflects on the difficulties of reasoning formally about effectful programs, the lessons learned, and suggests areas where these reasoning techniques might be more effectively applied in future work.
+
 
 \chapter{Background}
 
@@ -265,41 +276,43 @@ Perhaps the most interesting is "Not by equations alone: Reasoning with extensib
 
 
 \chapter{Unix Implementation}
-Having described the theoretical benefits of effect handlers in the previous chapter, this chapter shows the practical implementation of the "Tiny Unix" system written by Hillerström in the Koka programming language. 
+Having described the theoretical benefits of effect handlers in the previous chapter, we now show the practical implementation of the "Tiny Unix" system, written by Hillerström in the Koka programming language. 
 
-The features we implement provide some great examples of problems which are known to be difficult to model in traditional programming paradigms.  These include dynamic scoping, global state, control flow interruptions and reasoning about suspended computations. 
+The features we implement serve as good examples of problems that are difficult to model in traditional programming paradigms. These include problems concerning dynamic scoping, global state, control flow interruptions, and reasoning about suspended computations.
 
-We will see how Koka allows us to implement each effect independently and then compose them together to express this behaviour cleanly and concisely.
-In his thesis, Hillerström uses a pseudo-lambda calculus that can switch between deep and shallow handlers. I only use deep handlers in my Koka implementation.
+We will show how Koka allows us to implement each effect independently and then compose them together to express this behaviour cleanly and concisely.
+In his thesis, Hillerström uses a pseudo-lambda calculus that can switch between deep and shallow handlers. Koka primarily uses deep handlers, enabling us to implement each effect independently, expressing complex behaviour in a clean and concise manner.
 
 
 
 \section{Process Status}
-In Unix, when processes exit they must provide a code. A return code of 0 represents a successful execution and any other number otherwise. In a real Unix system, the specific non-zero number represents the type of error, however we won't implement this level of detail in our system.
+In Unix, processes provide an exit code upon termination. A return code of 0 signifies successful execution, while any non-zero value indicates an error. 
 
-We first begin by defining the exit effect with a single exit operation parameterised by an integer.
+We begin by defining the exit effect, which includes a single exit operation parameterised by an integer:
 \begin{lstlisting}
 effect exit
   ctl exit(n : int) : a
 \end{lstlisting}
 
-We can now write the exit handler:
+\vspace{1em}
+We can now write the exit handler. It can be seen that the function's signature expects the parameter action as a paused computation, which produces an exit effect.
+
 \begin{lstlisting}
 fun status(action : () -> <exit|e> a) : e int
     with final ctl exit(code) code
         action()
         0
 \end{lstlisting}
-In Hillerström's language we needed to add an absurd function to coerce the valueless return into something that made sense within the language. However, in Koka, we can simply return a value without a resumption. In the case that the function returns without calling an exit(n), we assume that it exited successfully and simply return 0.
+In Hillerström’s language, it was necessary to introduce an absurd function to coerce the valueless return into a form that made sense within the language’s type system. In contrast, Koka allows us to return a value directly without requiring a resumption. In cases where a function returns without explicitly calling exit(n), we assume it has exited successfully and simply return 0.
 
 \section{Basic IO}
-Hillerström first models a simplified form of state. You can see from the effect signature that can label the writes with a file descriptor. However, we don't implement the functionality until later and treat all writes as if they are happening to the same file, which we shall conceptualise and stdout, no matter the file descriptor.
+Hillerström first models a simplified form of state. From the effect signature, we can see that writes can be labelled with a file descriptor. However, in our implementation, we defer this functionality until later. Initially, we treat all writes as if they are directed to the same output stream, which we conceptualise as stdout, regardless of the specified file descriptor.
 
 \begin{lstlisting}
 effect bio
     fun writeBio( fd : filedesc, s : string ) : ()
 \end{lstlisting}
-
+\vspace{1em}
 Here we define the handler:
 
 \begin{lstlisting}
@@ -311,17 +324,18 @@ fun bio( action : () -> <bio|e> a ) : e (a,string)
   action()
 \end{lstlisting}
 
-Note that unlike in Hillerström's implementation we don't need explicit \texttt{resume} keywords. Effects of type \texttt{fun} just perform an effectful operation and continue execution immediately. 
+Note that, unlike in Hillerström’s implementation, we do not require explicit \lstinline{resume} keywords. In Koka, effects of type \lstinline{fun} perform the effective operation and then continue execution immediately.
 
 \section{Users and Environment Variables}
 Environment variables are key-value pairs stored in the environment of a process. In this implementation, provide an example by storing the current user's name as an environment variable.
 
-We store the users as type:
+We define users as a sum type:
 \begin{lstlisting}
 type user = Root, Alice, Bob
 \end{lstlisting}
 
-We define effects su (Switch User) parameterised by the user we wish to switch to and whoami() which returns the current user as a string.
+We define two effects: \lstinline{su}, which is parameterised by the user to switch to, and \lstinline{whoami()}, which returns the current user as a string.
+
 \begin{lstlisting}
 effect su
   ctl su( u : user ) : ()
@@ -341,7 +355,7 @@ fun env( user : user, action : () -> <whoami|e> a ) : e a
   action()
 \end{lstlisting}
 
-Next we define seperate handlers for the \texttt{su} and \texttt{whoami()} effects 
+Next, we define separate handlers for the \lstinline{su} and \lstinline{whoami()} effects:
 \begin{lstlisting}
 fun session-mgr( initial-user : user, action : () -> <su,whoami|e> a ) : e a
   with env(initial-user)
@@ -360,9 +374,9 @@ fun env( user : user, action : () -> <whoami|e> a ) : e a
   action()
 \end{lstlisting}
 
-Env is a handler parameterised by the current user, which simply wraps the resumption it is supposed to have scope for, which would represent a process, and returns this value when queried. 
+The \lstinline{env} handler is parameterised by the current user, enabling it to handle \lstinline{whoami()} operations by returning this user's identity.
 
-session-mgr manages user switches by wrapping the continuation in a new \texttt{env} handler. This provides greater modularity than global variables as the state is entirely encapsulated by the handler. This is very useful in the next, section which is concerned with process forking.
+\lstinline{session_mgr} manages user switches by rewrapping the continuation in a new \lstinline{env} handler, parameterised by the new user. This method offers greater modularity compared to global variables because it fully encapsulates state within the effect handler itself. This is an example of dynamic scoping, a technique that will be especially useful in the next section, which deals with process forking.
 
 \section{Multi-Process System}
 \subsection*{Forking}
@@ -1062,15 +1076,15 @@ Each structure relied on invariants maintained by the others: directory entries 
 Performing operations such as file writing or creation involved updating global state which involved multiple layers of functions and handlers including get, put, lookup, modify, fileRW, fopen, fwrite, withDefault etc.The need to thread through and update each of these components made algebraic reasoning impractical.
 
 
-\section{Process Forking - Non Determinism}
+\section{Process Forking}
 
 Process forking introduces nondeterministic branching into our system which exhibits a number of interesting algebraic properties. By first establishing these properties in isolation we provide a basis for understanding how forking composes with other effects in our system. In subsequent sections we will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
 
-Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system.
+Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system. \textcolor{red}{The scheduler can adopt different policies e.g. fairness, liveness etc which can affect the execution order which are outwith our algebra.}
 
 
 \subsection{Equational Theories of Non Determinism}
-Abstract notions of nondeterminism state that is is modelled by an abstract algebraic structure known as a join semi-lattice \cite{kiselyov2021extensible} which is governed by the following algebraic properties:
+Abstract notions of nondeterminism state that is is modelled by an abstract algebraic structure known as the \textit{semi-lattice} laws \cite{Pretnar:2010} which is governed by the following algebraic properties:
 
 \begin{figure}[H]
 \centering
@@ -1090,7 +1104,7 @@ Abstract notions of nondeterminism state that is is modelled by an abstract alge
 
 
 
-
+\textcolor{red}{However, this abstraction becomes problematic when one attempts to model or implement concrete algorithms that resolve nondeterministic choices, such as our scheduler.  the symmetry and idempotency assumed by semi-lattices is too strong to hold. Associativity holds in the presence of any other effect \cite{NotByEquationsAlone}}
 
 
 
@@ -1114,8 +1128,10 @@ Abstract notions of nondeterminism state that is is modelled by an abstract alge
 
 Unfortunately, in Hillerström's implementation of nondeterminism \ref{nondetImplementation}, forking is neither commutative nor associative. This makes sense for idempotency as two identical processes are clearly not equivalent to one process. Commutativity is not valid either as the order in which the processes are returned could affect observational behaviour when under scheduling.
 
+\textcolor{red}{say we run in to our first problem suggested by "Not by Equations Alone", equational theories often exert unrealistic demands on their implementations, they cite nondeterminism as an example of this}
 
-However, in the abscenece of other effects, forking is associative. In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
+
+However we can show that, in the absence of other effects, forking is associative. In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
 
 \vspace{-2em}
 \begin{figure}[H]
@@ -1282,9 +1298,9 @@ a \;\texttt{++}\; (b \;\texttt{++}\; c)
 
 
 \section{State Models and Handler Composition}
-In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. 
+In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. \textcolor{red}{describe in terms of monads? Say much work has been done in this area. }
 
-We obtain two different models of state depending on this ordering:
+We obtain two different models of state depending on this ordering \textcolor{red}{we must define local and global state formally as these are loaded terms}:
 \begin{itemize}
     \item Local State (outer nondeterminism, inner state): Here each nondeterministic branch maintains its own independent state, akin to local variables within a program. The scope is private to the process and only lasts as long as the process lasts.
     \item Global State (outer state, inner nondeterminism): Here the same state is shared among all branches of a nondeterministic computation similar to the case of a global file system.
@@ -1292,62 +1308,20 @@ We obtain two different models of state depending on this ordering:
 
 
 
-We now go onto describe the properties of global and local state as described in the latest version of the Open Group Unix Specifications \cite{posix}. Our goal is to show how these behaviours are captured within our effect handler model, and to contrast this with the conventional imperative mechanisms typically used to implement such functionality in Unix-like systems.
+We now go onto describe the properties of global and local state as described in the latest version of the Open Group Unix Specifications \cite{posix}. Our goal is to show how these behaviours are captured within our effect handler model, and to contrast this with the conventional imperative mechanisms typically used to implement such functionality in Unix-like systems. \textcolor{red}{explain these in terms of the algebraic properties of local/global state described in papers}
 
-
-
-\subsection{Global State : Unix Specifications}
-\subsubsection*{Shared State} 
-In the global state model, all branches operate over a single, shared memory state that is visible and modifiable across the entire computation. We implemented a detailed version of this behaviour in Koka by modelling the file system as a globally accessible state handler. We illustrate how this behaviour arises by reasoning through handler scope and equational equivalence.
-
-\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.2316}]
- This volume of POSIX.1-2008 does not specify the behaviour of concurrent writes to a regular file |
- from multiple threads, except that each write is atomic (see Section 2.9.7, onpage 522). |
- Applications should use some form of concurrency control.
-\end{tcolorbox}
-
-
-\begin{longtable}{@{}l@{}}
-\textbf{with } state \textbf{ handle} \\
-\quad \textbf{with } nondet \textbf{ handle} \\
-\quad\quad Fork()(p.\textbf{if } p \textbf{ then } set(x)(a.C\textsubscript{1}) \textbf{ else } set(y)(b.C\textsubscript{2})) \\
-\quad$\equiv$ (11) \\
-\\
-\textbf{with } state \textbf{ handle} \\
-\quad \textbf{resume } True \text{ ++ } \textbf{resume } False \\
-\quad [()/v,\ \text{fun } r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)] \\
-\\
-\quad$\equiv$ (\text{subst}) \\
-\textbf{with } state \textbf{ handle} \\
-\quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ True \\
-\quad ++ \\
-\quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ False \\
-\\
-\quad$\equiv$ (8) \\
-\textbf{with } state \textbf{ handle} \\
-\quad \textbf{with } nondet \textbf{ handle if } True \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
-\quad ++ \\
-\quad \textbf{with } nondet \textbf{ handle if } False \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
-\\
-\quad$\equiv$ (5,6) \\
-\textbf{with } state \textbf{ handle} \\
-\quad \textbf{with } nondet \textbf{ handle } set(x)(a.C1) \\
-\quad ++ \\
-\quad \textbf{with } nondet \textbf{ handle } set(y)(b.C2) \\
-\\
-\quad$\equiv$ (12) \\
-\textbf{with } state \textbf{ handle} \\
-\quad set(x)(a.\textbf{with } nondet \textbf{ handle } C1) \\
-\quad ++ \\
-\quad set(y)(b.\textbf{with } nondet \textbf{ handle } C2) \\
-\end{longtable}
-
-
-This creates a non deterministic outcome, as we can see from the example above, the order in which the scheduler chooses to run these branches will affect the final state of the system. To each process the system is nondeterministic as it doesn't know what state the system will be in when it is run. 
 
 \subsection{Local State : Unix Specifications}
 
+\textcolor{red}{As local state, we are referring to  state that is scoped to a single process and is not observable or accessible by any other process in the system. Examples include process-local variables, file descriptor tables, or other private data that do not persist across process boundaries or influence other concurrent executions. 
+}
+
+
+
 \subsubsection{Independent and Deterministic State} 
+
+In From High to Low: Reasoning About Effect Implementations \cite{hightoLow}, Wang and Schrijvers show that local state, when composed with nondeterminism using the \lstinline{StateT} monad transformer \cite{jones1995}, preserves the associativity and identity laws of the state monad. This ensures that state remains deterministic within each nondeterministic branch.
+
 In this handler configuration, the state handler is applied to each branch, allowing each to maintains a separate, independent state. This isolation ensures that there is no interference between parallel computations. Within each branch, the state is deterministic, the state laws shown in previous sections hold.
 
 \begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.899}]
@@ -1359,7 +1333,7 @@ In this handler configuration, the state handler is applied to each branch, allo
 A process is an address space with one or more threads executing within that address space. Each process has its own private memory and system resources
 \end{tcolorbox}
 
-We can see, when rewriting these laws in handler notation, that they remain trivially valid: the state handler processes all effects before any branching occurs.
+We can see, directly from handler structure, when rewriting these laws in handler notation, that they remain trivially valid: the state handler processes all effects before any branching occurs.
 \begin{figure}[H]
 
 \centering
@@ -1471,6 +1445,10 @@ Memory mappings that were created in the process shall be unmapped before the pr
     
 \subsubsection{State Inheritance:} When a process is forked, the child receives a snapshot of the parent’s state at that moment. This fork-time duplication ensures that both processes start from identical conditions, but proceed independently. Changes made in one process no longer affect the other.
 
+\textcolor{red}{show how get and set distribute over the fork (put/get left distributivity)}
+
+\textcolor{red}{show get;return x=  x and set(a); return x = x}
+
 \begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.897}]
 Memory mappings created in the parent shall be retained in the child process
 \end{tcolorbox}
@@ -1529,6 +1507,74 @@ z $\leftarrow$ \textbf{do Ask()} \ [()/x,\ \textbf{fun } z $\rightarrow$ \textbf
 
 
 
+
+
+\subsection{Global State : Unix Specifications}
+
+\textcolor{red}{As global state, we are referring to memory or system resources that are shared across all processes and remain accessible regardless of process boundaries. Examples include the file system, shared memory mappings, or other kernel-managed structures that persist independently of any single process. This state is visible to and modifiable by all concurrently running processes, meaning changes made in one process can influence the behaviour or outcomes of others.
+}
+
+\textcolor{red}{
+Global state lacks many of the algebraic properties we observed in the local case. Algebraic effect systems describe the structure of programs, but not the sequence in which operations occur. As local state is indepenent and commutative this didn't matter, but in global state this leads to the race conditions described earlier \cite{raceConditionRef}
+}
+
+\textcolor{red}{Our algebra defines which operations are performed and how they are composed structurally, but they don't have a notion of time/order and so don't describe operational runtime behaviour. We rely on external ordering mechanisms such as scheduling and mutexes to define how these are actually executed.
+}
+
+\textcolor{red}{Global state cannot be described as a monad in this setting, because it lacks a coherent distributive interaction with nondeterminism. The absence of this law means that basic monadic composition, such as associativity and bind chaining}
+
+The Unix specifications note this problem and delegates the problem to the application level. We talk about these process synchronisation methods later in this chapter.
+
+
+\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.2316}]
+ This volume of POSIX.1-2008 does not specify the behaviour of concurrent writes to a regular file |
+ from multiple threads, except that each write is atomic (see Section 2.9.7, onpage 522). |
+ Applications should use some form of concurrency control.
+\end{tcolorbox}
+
+We illustrate how this non-deterministic behaviour arises by reasoning through handler scope and equational equivalence.
+
+\begin{longtable}{@{}l@{}}
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{with } nondet \textbf{ handle} \\
+\quad\quad Fork()(p.\textbf{if } p \textbf{ then } set(x)(a.C\textsubscript{1}) \textbf{ else } set(y)(b.C\textsubscript{2})) \\
+\quad$\equiv$ (11) \\
+\\
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{resume } True \text{ ++ } \textbf{resume } False \\
+\quad [()/v,\ \text{fun } r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)] \\
+\\
+\quad$\equiv$ (\text{subst}) \\
+\textbf{with } state \textbf{ handle} \\
+\quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ True \\
+\quad ++ \\
+\quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ False \\
+\\
+\quad$\equiv$ (8) \\
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{with } nondet \textbf{ handle if } True \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
+\quad ++ \\
+\quad \textbf{with } nondet \textbf{ handle if } False \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
+\\
+\quad$\equiv$ (5,6) \\
+\textbf{with } state \textbf{ handle} \\
+\quad \textbf{with } nondet \textbf{ handle } set(x)(a.C1) \\
+\quad ++ \\
+\quad \textbf{with } nondet \textbf{ handle } set(y)(b.C2) \\
+\\
+\quad$\equiv$ (12) \\
+\textbf{with } state \textbf{ handle} \\
+\quad set(x)(a.\textbf{with } nondet \textbf{ handle } C1) \\
+\quad ++ \\
+\quad set(y)(b.\textbf{with } nondet \textbf{ handle } C2) \\
+\end{longtable}
+
+
+This creates a non deterministic outcome, as we can see from the example above, the order in which the scheduler chooses to run these branches will affect the final state of the system. To each process the system is nondeterministic as it doesn't know what state the system will be in when it is run. 
+
+
+
+
 \section{Properties of Processes}
 
 Having clarified the algebraic properties of individual effects and the properties of global and local scope depending on handler ordering, we now look at what properties processes maintain when combining  non determinism, global state, local state.
@@ -1539,6 +1585,8 @@ In this section, we also introduce the exit effect, a non-resumable control oper
 \subsubsection*{Local State Breaks Associativity}
 
 In the purely nondeterministic setting, forking is associative, i.e. the grouping/nesting does not affect its semantics. However in the 
+
+\textcolor{red}{According to most equational theories nondeterminism is supposed to be associative in }
 
 \begin{table}[H]
 \centering
@@ -1684,6 +1732,7 @@ n
 
 \section{Process Synchronisation}
 
+
 So far we have introduced a basic time-sharing, using interrupts and the scheduler, that allows the interleaving of process execution. However, as mentioned before, the way that processes are interleaved is non-deterministic, in other words processes don't know the order in which the will be executed. 
 
 This is a problem because, as we have demonstrated, many of our effects are non-commutative meaning that the order of execution is important for correctness. This creates what is known as a "race condition", A race condition arises when the correctness of a program depends on the nondeterministic interleaving of concurrent operations on shared state. Without explicit synchronisation, the outcome is unpredictable and may differ across runs, making correct behaviour accidental rather than guaranteed.
@@ -1691,6 +1740,9 @@ This is a problem because, as we have demonstrated, many of our effects are non-
 Currently the only way to guarantee execution order is to execute all the steps, in the same process, sequentially with no interrupts which defeats the point of our time sharing system as no interleaving is possible in this time, which blocks the other processes.
 
 To introduce flexibility around process interleaving whilst maintaining guarantees about execution ordering we introduce two features
+
+\textcolor{red}{Write about the problem of reasoning about the scheduler, something to do with mutually parameterised data types or smn}
+
 
 \begin{itemize}
     \item \lstinline{Wait} \textbf{system calls: } This allows a parent to suspend execution until its child process (identified by its process id) has finished executing. Think of this as introducing a causal dependency, the parent can only when the child finishes.
