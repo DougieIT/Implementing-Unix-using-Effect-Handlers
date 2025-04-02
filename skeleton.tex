@@ -100,14 +100,14 @@
 
 \abstract{
 
-Most imperative programming languages do not provide a structured facility for handling effects, and functional approaches such as Monads lead to poor modularity and composability issues \cite{monad}. 
+Most imperative programming languages do not provide a structured facility for handling effects, and functional approaches such as Monads lead to poor modularity and composability issues \cite{jones1993composing}. 
 
 
-Recently, though, Algebraic effect handlers have emerged as a flexible, first-class mechanism to define and interpret effects dynamically. This approach provides a structured and modular way to reason about computational effects, such as exceptions, state, and concurrency, and is particularly useful in modelling complex control flows. As a result, it provides an effective method for addressing several of the key challenges involved in implementing a Unix-like system.
- \cite{}. 
+Recently, Algebraic effect handlers have emerged as a flexible, first-class mechanism to define and interpret effects dynamically. This approach provides a structured and modular way to reason about computational effects, such as exceptions, state, and concurrency, and is particularly useful in modelling complex control flows, providing an effective method for addressing several of the key challenges involved in implementing a Unix-like system.
+ \cite{ritchie1974unix}. 
 
 
-Unix was first developed in the 1970s at Bell Labs \cite{Unix} to provide a new approach to operating system design. Prior to this, operating systems were typically monolithic and hardware specific. Unix was designed to be a small, portable and multi-user operating system, which emphasised simplicity, modularity and composability. Its key innovations were: 
+Unix was first developed in the 1970s at Bell Labs \cite{ritchie1984unix} to provide a new approach to operating system design. Prior to this, operating systems were typically monolithic and hardware specific. Unix was designed to be a small, portable and multi-user operating system, which emphasised simplicity, modularity and composability. Its key innovations were: 
 
 \begin{itemize}
     \item Everything is treated as a file – a unified approach that simplifies interaction with devices, processes, and data. 
@@ -185,12 +185,14 @@ Algebraic effects \cite{plotkin_handling_2013} and their handlers \cite{pretnar_
 
 Algebraic effects are handled by \textit{effect handlers}, which provide an interpretation for these effects.
 
- \subsection{Effect Signatures}
+\subsection{Effect Signatures}
 In an algebraic effect system, effects are described by signatures, which define a collection of named operations that the effect supports. Each operation has a type signature that specifies the arguments it takes and the type of result it returns.
 
-Take the classic example \lstinline{State}. This effect models mutable state, and its signature typically includes two operations:
-\lstinline{Read(fileName : String) : String}
-\lstinline{Write(fileName : String, contents : String) : Unit}
+Take the classic example \texttt{State}. This effect models mutable state, and its signature typically includes two operations:
+\begin{itemize}
+    \item \texttt{Read(fileName : String) : String}
+    \item \texttt{Write(fileName : String, contents : String) : Unit}
+\end{itemize}
 
 
 
@@ -279,7 +281,7 @@ Effect handlers allow for branching depending on how they use their continuation
 
 The difference between Shallow and Deep handlers can be illustrated by showing how each evaluates the computational tree differently.
 
-A deep handler is analogous to a fold over a computational tree. It provides an interpretation for each operation it handles given its leaves and subtrees. Like a fold, a deep handler traverses the entire computation tree, recursively handling both the current operation and each operation within its continuations. This makes deep handlers easy to reason about, as we can assume the way that the continuation will be interpreted will be consistent, giving it an \textit{algebraic structure}.
+A deep handler is analogous to a fold over a computational tree \cite{hillerstrom_foundations_nodate}. It provides an interpretation for each operation it handles given its leaves and subtrees. Like a fold, a deep handler traverses the entire computation tree, recursively handling both the current operation and each operation within its continuations. This makes deep handlers easy to reason about, as we can assume the way that the continuation will be interpreted will be consistent, giving it an \textit{algebraic structure}.
 
 However, a shallow handler does not recurse like this: it is only applied to the first operation it sees. This means the handler must be explicitly reapplied to its continuations if we are to interpret their subsequent operations. This makes formal reasoning more difficult, but it does provide more flexible control over how effects are handled.
 
@@ -287,36 +289,36 @@ However, a shallow handler does not recurse like this: it is only applied to the
 Continuing on with our analogy of effectful programs as computational trees, we can isolate parts of the tree as self contained sub programs and reason about them independently. 
 
 
-As Deep handlers correspond to a fold over the entire computation, every effect gets interpreted consisently by the same handling clause. This consistency means that if we prove a certain rewrite law we can apply it anywhere in that computation. 
+As Deep handlers correspond to a fold over the entire computation, every effect gets interpreted consistently by the same handling clause. This consistency means that if we prove a certain rewrite law we can apply it anywhere in that computation. 
 
 Certain standard algebraic effects (state, non-determinism, ...) 
 
 \section{Unix}
-The Unix operating system was developed by Bell Labs in the 1970s \cite{}. Written in the C programming language, it was one of the first systems to prioritise portability across hardware platforms, making it extremely popular and influential.
+The first edition of the Unix operating system was released by Bell Labs in 1971 \cite{ritchie1974unix}. Written in the C programming language, it was one of the first systems to prioritise portability across hardware platforms, making it extremely popular and influential \cite{blair1985critique}.
 
-Unix was created to provide a portable, multi-user, multi-tasking system and introduced several fundamental innovations including: a hierarchical file system; a uniform \textit{“everything is a file”} interface; and offered powerful process management through system calls like \textit{fork} and \textit{exec}.  It promoted simplicity, modularity, and composition, principles that distinguished it from the large, monolithic systems of its time and that continue to influence modern operating systems like Linux.
+Unix was created to provide a portable, multi-user, multi-tasking system and introduced several fundamental innovations including: a hierarchical file system; a uniform \textit{“everything is a file”} interface; and offered powerful process management through system calls like \textit{fork} and \textit{exec}.  It promoted simplicity, modularity, and composition, principles that distinguished it from the large, monolithic systems of its time and that continue to influence modern operating systems like Linux \cite{gancarz2003linux}.
 
-The “everything is a file” model provides a consistent interface for interacting with system resources. Abstract operations, such as system calls, are interpreted by handlers that act as self-contained modules, assigning specific behaviours for I/O, process control, or scheduling. This modular design reflects the Unix philosophy of building systems from small, composable components.
+The “everything is a file” model provides a consistent interface for interacting with system resources. Abstract operations, such as system calls, are interpreted by handlers that act as self-contained modules, assigning specific behaviours for I/O, process control, or scheduling. This modular design reflects the Unix philosophy\cite{raymond2003art} of building systems from small, composable components.
 
-What makes Unix interesting from a control flow perspective is the rich set of mechanisms it provides for suspending, resuming and branching computation. Process scheduling can exhibit non-linear control flow, allowing computations to split into separate execution paths and forcing them to be paused.
+What makes Unix interesting from a control flow perspective is the rich set of mechanisms it provides for suspending, resuming and branching computations\cite{stevens2013advanced}. Process scheduling can exhibit non-linear control flow, allowing computations to split into separate execution paths and forcing them to be paused.
 
-Alongside complex control flow, Unix also introduces subtle scoping challenges. It must be able to support both global and local scoping for state. Processes must have independent access to their own resources and must be able to duplicate their own state for their children. Importantly, the same variable name or identifier may refer to different resources in different processes, enabling compositional abstractions like piping and redirection. They must of course also be able to access global state represented by the file system.
+Alongside complex control flow, Unix also introduces subtle scoping challenges. It must be able to support both global and local scoping for state. Processes must have independent access to their own resources and must be able to duplicate their own state for their children \cite{aiken2006deconstructing}. Importantly, the same variable name or identifier may refer to different resources in different processes, enabling compositional abstractions like piping and redirection. They must of course also be able to access global state represented by the file system.
 
 Unix presents exactly the kind of challenges that effect handlers excel at solving: control flow is non-trivial, state is both local and global, and system calls are abstract interfaces that demand interpretation. These features make Unix an ideal case for demonstrating the power of effect handlers, and many papers on effect handlers use Unix features to demonstrate the strengths of the effect handlers.
 
 
 
 \section{Evaluating Previous work}
-In his 2021 paper \textit{“Foundations for Programming and Implementing Effect Handlers”} \cite{hillerstrom_foundations_nodate}, Daniel Hillerström implemented a theoretical implementation of Unix. He draws an analogy between operating systems and effect handlers, arguing that both interpret a series of abstract invocations. In the case of the OS, these are system calls; in the case of effect handlers, these are operations. The composition of effect handlers, which he describes as “tiny operating systems”, can provide semantics for a Unix implementation. In this dissertation, I use Koka to create a concrete implementation of the abstract syntax Hillerström used in his paper. I will then use equational theory and algebraic equivalences to show my implementation is correct.
+In his 2021 paper \textit{Foundations for Programming and Implementing Effect Handlers} \cite{hillerstrom_foundations_nodate}, Daniel Hillerström implemented a theoretical implementation of Unix. He draws an analogy between operating systems and effect handlers, arguing that both interpret a series of abstract invocations. In the case of the OS, these are system calls; in the case of effect handlers, these are operations. The composition of effect handlers, which he describes as “tiny operating systems”, can provide semantics for a Unix implementation. In this dissertation, I use Koka to create a concrete implementation of the abstract syntax Hillerström used in his paper. I will then use equational theory and algebraic equivalences to show my implementation is correct.
 
-There are several papers which examine reasoning about effect handlers. Pretnar's \textit{"The Logic and Handling of Algebraic Effects"} \cite{Pretnar:2010} uses algebraic equations to reason about abstract properties of state, exceptions and nondeterminism. McLaughlin's PhD thesis \textit{"Relational Reasoning for Effects and Handlers"} \cite{McLaughlin2020} uses automated reasoning techniques to verify the correctness of an effect handler implementation for Unix-style pipes. 
+There are several papers which examine reasoning about effect handlers. Pretnar's \textit{The Logic and Handling of Algebraic Effects} \cite{Pretnar:2010} uses algebraic equations to reason about abstract properties of state, exceptions and nondeterminism. McLaughlin's PhD thesis \textit{Relational Reasoning for Effects and Handlers} \cite{McLaughlin2020} uses automated reasoning techniques to verify the correctness of an effect handler implementation for Unix-style pipes. 
 
-However, the most relevant for this dissertation is \textit{"Not by equations alone: Reasoning with extensible effects"} by Oleg Kiselyov, Shin-Cheng Mu and Amr Sabry \cite{kiselyov2021extensible}, which outlines the limitations of using equational laws to reason about effectful programs. They show how composition can break down algebraic laws which held in isolation. \textcolor{red}{It suggests stronger notions of congruence, i.e. proving expressions are equivalent under different contexts are required.}
+However, the most relevant for this dissertation is \textit{Not by equations alone: Reasoning with extensible effects} by Oleg Kiselyov, Shin-Cheng Mu and Amr Sabry \cite{kiselyov2021not}, which outlines the limitations of using equational laws to reason about effectful programs. They show how composition can break down algebraic laws which held in isolation. \textcolor{red}{It suggests stronger notions of congruence, i.e. proving expressions are equivalent under different contexts are required.}
 
 
 
 \chapter{Unix Implementation}
-Having described the theoretical benefits of effect handlers in the previous chapter, we now show the practical implementation of the "Tiny Unix" system, written by Hillerström in the Koka programming language. 
+Having described the theoretical benefits of effect handlers in the previous chapter, we now show the practical implementation of the "Tiny Unix" system, written by Hillerström, in the Koka programming language. 
 
 The features we implement serve as good examples of problems that are difficult to model in traditional programming paradigms. These include problems concerning dynamic scoping, global state, control flow interruptions, and reasoning about suspended computations.
 
@@ -540,8 +542,7 @@ val fs0 : fileSystem =
     IList([(0, INode ( 1, loc = 0 ))]),
     DataRegion([(0, "")]),
     1,
-    1
-  )
+    1)
 \end{lstlisting}
 
 \subsection{File Reading and Writing}
@@ -853,8 +854,7 @@ fun scheduler<a,e>(comp : () -> <co,div> a, init : sstate<a>) : <div|e> list<(in
         if hasPid(pid', init.q)
         then init.q ++ [(init.pid, Blocked(pid', Proc(waitingProc)))]
         else init.q ++ [(init.pid, Ready(Proc(waitingProc)))]
-      runNext(Sstate( q = newQ, done = init.done, pid=init.pid,pnext=init.pnext))
-      
+      runNext(Sstate( q = newQ, done = init.done, pid=init.pid,pnext=init.pnext))      
   comp()
 \end{lstlisting}    
 The scheduler handles \lstinline{fork} operations by constructing a child process in a \lstinline{Ready} state, adding it to the end of the process queue. The child's resumption is parametrised with 0 to indicate to the resumption that it is child process. Finally, we parametrise the resumption to the parent with the \textit{PID} of the child process.
@@ -875,12 +875,13 @@ In the next chapter we will demonstrate how the same modular handler-based abstr
 
 \chapter{Reasoning}
 
-In this section we use equational reasoning using algebraic equivalences for deep handlers as defined in Pretnar's Handlers Tutorial \cite{pretnar_introduction_2015}. These are written in figure \ref{fig:equational-laws}.  These equivalences provide a foundation for proving formal properties of Unix programs implemented using effect handlers. If we can apply these rules to transform one computation into another, we can consider them the same up to observational equivalence.
-An external observer refers to anything outside the computation itself, including systems like the file system, environment variables, or exception handlers that could observe or be affected by its effects.
+In this section we reason about deep handlers using algebraic equivalences, as defined in Pretnar's \textit{Handlers Tutorial} \cite{pretnar_introduction_2015}, (\textit{see figure \ref{fig:equational-laws} below}).  These equivalences provide a method for proving formal properties for  programs implemented using deep effect handlers. Using these rules to transform one computation into another, computations can be shown to be \textit{observationally equivalent}.
 
-Effect handlers make this kind of reasoning possible by making effects explicit and providing a clear separation between where effects are invoked and how they are handled, enabling formal reasoning with algebraic rules.
+In the context of effectful computations, observational equivalence holds when two computations, possibly with different internal structure or steps, result in the same sequence of externally visible effects \cite{sannella1987observational}. In other words, from the perspective of any observer or context interacting with the computation, the computations behave identically, despite any internal differences. External observers include the file system or user IO, i.e. system that could observe or be affected by the computations execution.
 
-We aim to verify the correctness of our Unix implementation. Where associated algebraic theories exist for the effects we model, such as state or nondeterminism, we aim to show our implementations satisfies the laws of those theories. In the case where no established equational theory applies, we instead provide reasoning to demonstrate the implementation behaves as intended.
+\textcolor{red}{Effect handlers make this kind of reasoning possible by separating the syntax and semantics of effects \cite{TheLogicAndHandlingOfAlgebraicEffects}. }
+
+In what follows, I attempt to demonstrate the of use algebraic equivalences to verify the correctness of my Unix implementation. Note, where associated equational theories exist for the effects modelled, such as state or nondeterminism, I show where my implementations satisfy the laws of those theories. In the case where no established equational theory applies, I apply equivalence rules to demonstrate why my implementation behaves as intended.
 
 
 \begin{figure}[H]
@@ -898,7 +899,7 @@ We aim to verify the correctness of our Unix implementation. Where associated al
         &\text{(9) } \quad \lambda x \rightarrow v \; x \equiv v 
     \end{align*}
     \end{tcolorbox}
-    
+In the following rules, we have \( h = \mathbf{handler}\ \{ \mathbf{return}\ x \mapsto c_r,\, \mathsf{op}_1(x;\,k) \mapsto c_1,\, \ldots,\, \mathsf{op}_n(x;\,k) \mapsto c_n \} \):
     \begin{tcolorbox}[colframe=black, colback=white, sharp corners]
     \begin{align*}
         &\text{(10) } \quad \text{with } h \; \text{handle } (\text{return } v) \equiv c_r[v/x] \\
@@ -921,7 +922,7 @@ We aim to verify the correctness of our Unix implementation. Where associated al
 \subsection{Simplified single-cell state}
 
 \label{subsec:simplified-state}
-We begin by reasoning about a minimal model of state, consisting of a single global cell and get and put operations. These handlers were taken from Pretnar's Handler Tutorial \cite{pretnar_introduction_2015}. Although this model is deliberately simple, the reasoning principles it demonstrates are general. We will see that the same basic properties of state we prove here arise in more complex examples later on.  
+Before applying equivalence rules to my Unix implementation, I begin by reasoning about a minimal model of state, consisting of a single cell with associated \lstinline{get} and \lstinline{put} operations. These handlers were taken from Pretnar's \textit{Handler Tutorial} \cite{pretnar_introduction_2015} (\textit{see figure \ref{fig:state-handler}}). Although this model is deliberately simple, the reasoning principles it demonstrates are general, and will be applicable to more complex examples shown later on.  
 
 \begin{figure}[H]
 \centering
@@ -943,22 +944,23 @@ We begin by reasoning about a minimal model of state, consisting of a single glo
 \label{fig:state-handler}
 \end{figure}
 
-To briefly explain this handler, the get operation returns a function which is parametrised by the current state \lstinline{s}. It takes this value of state into the continuation \lstinline{k}. This provides a return value to the get operation in the continuation \lstinline{k}. The second \lstinline{s} in the function body rethreads the current state back into the continuation, without this second application, state would not be preserved for subsequent operations. 
-The put clause returns a function that takes a parameter, representing the prior state, but immediately discards it. Since we are working within a single-cell state model, the previous state is irrelevant as it is about to be overwritten by the new state value. The continuation is applied to () (as a put operation returns no meaningful result), and the resulting computation is run under the new state \lstinline{s}, thereby establishing \lstinline{s} as the current state for the rest of the computation.
+In the handler above, the \lstinline{get} operation returns a function which is parametrised by the current state \lstinline{s}. This function applies the continuation \lstinline{k}  to \lstinline{s}, providing a return value to the \lstinline{get} operation. The subsequent \lstinline{s} in the function body \textcolor{red}{rethreads the current state back into the continuation}. Note, without this second application, state would not be preserved for subsequent operations. 
 
-We use this handler to establish four fundamental state laws. These form a basis for reasoning about state, capturing the essential behaviour of get and put, and allowing us to reason algebraically about arbitrary sequences of state operations.
+The \lstinline{put} clause returns a function as a parameter, representing the prior state, but ignores it. Since we are working with a single-cell state model, the prior state is irrelevant as will be overwritten by the new state value. The continuation is applied to \lstinline{()} (because a \lstinline{put} operation has no meaningful return value), and the resulting computation is run under the new state \lstinline{s}. This establishes \lstinline{s} as the new state for the remainder of the computation.
 
-\begin{itemize}
+Since \textit{state} has an associated equational theory, it can proved that this handler is correct by showing that it follows the four fundamental equational laws of state. These interaction laws provide a basis for reasoning about state and capture the essential behaviour of \lstinline{get} and \lstinline{put}, allowing us to reason about arbitrary sequences of \textit{state} operations. The laws are:
+
+\begin{enumerate}
     \item Put-Put 
     \item Put-Get
     \item Get-Put
     \item Get-Get
-\end{itemize}
+\end{enumerate}
 
-As these proofs take up a lot of space, in the interest of brevity, we will only show one example here. The complete put of proofs are attached in appendice \ref{full-simplified-single-cell-state-proof} 
+Since these proofs take up a lot of space, for brevity, I only show one example here. The complete set of proofs are attached in appendice \ref{full-simplified-single-cell-state-proof} 
 
-\subsubsection*{Idempotence of Put}
-Performing consecutive \lstinline{put} operations retains only the final update, as each invocation completely overwrites the current state:
+\subsubsection*{1. Put-Put (The Idempotence of Put)}
+We can prove that performing consecutive \lstinline{put} operations retains only the final update, as each invocation overwrites the prior state:
 \[
 \begin{aligned}
     &\mathsf{\textbf{with}} \; \mathsf{state} \; \mathsf{\textbf{handle}} \\
@@ -973,19 +975,19 @@ Performing consecutive \lstinline{put} operations retains only the final update,
 
 
 \begin{align*}
-&\equiv\quad (11) \\
+&\quad\equiv\quad (11) \\
 &\text{fun } \_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \textbf{with state handle } put(b)(y.C)/k] \\
 &\equiv\quad (\text{subst}) \\
 &\text{fun } \_ \rightarrow ((\text{fun } x \rightarrow \textbf{with state handle } put(b)(y.C))\ ())\ a \\
-&\equiv\quad (8) \\
+&\quad\equiv\quad (8) \\
 &\text{fun } \_ \rightarrow (\textbf{with state handle } put(b)(y.C))\ a \\
-&\equiv\quad (11) \\
+&\quad\equiv\quad (11) \\
 &\text{fun } \_ \rightarrow (\text{fun } \_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \textbf{with state handle } C/k])\ a \\
-&\equiv\quad (\text{subst}) \\
+&\quad\equiv\quad (\text{subst}) \\
 &\text{fun } \_ \rightarrow (\text{fun } \_ \rightarrow (\text{fun } y \rightarrow \textbf{with state handle } C)\ ())\ b)\ a \\
-&\equiv\quad (8) \\
+&\quad\equiv\quad (8) \\
 &\text{fun } \_ \rightarrow (\text{fun } \_ \rightarrow (\textbf{with state handle } C)\ b)\ a \\
-&\equiv\quad (\text{application}) \\
+&\quad\equiv\quad (\text{application}) \\
 &\text{fun } \_ \rightarrow (\textbf{with state handle } C)\ b
 \end{align*}
 
@@ -1007,20 +1009,27 @@ LHS $\equiv$ RHS
 
 
 \subsection{Verifying the Implementation of Environment Variables}
-This simplified model provides us with a great way to verify the concrete implementation of environment variables in our system. These handlers form an example of single-cell state where the operations Su(user) corresponds to set(x) and Ask() corresponds to get:
+Following the method used in the single-cell state model described above, we can verify the concrete implementation of environment variables in our system. These handlers are a specialisation of the single-cell state which represents the current user. The operation \lstinline{Su(user')} corresponds to \lstinline{set(x)} andthe operation \lstinline{Ask()} corresponds to \lstinline{get()}:
 
 \begin{figure}[H]
 \centering
-
 \[
- \text{sessionmgr} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=} \;
- \text{env} \langle \mathit{u}, (\lambda \langle \rangle.\; \textbf{handle}\; m \langle \rangle\; \textbf{with}  \{ 
- \begin{array}{ll}
-   \textbf{return}\; res & \mapsto res \\
-   \!\langle \text{Su}\; \mathit{u'} \Rightarrow \textbf{resume} \!\rangle & \mapsto \text{env} \langle \mathit{u'}, \textbf{resume} \rangle
- \end{array}
- \} \rangle 
- \]
+\mathsf{\textbf{Session}} := \{ \mathsf{Ask} : 1 \rightsquigarrow \mathsf{String}, \quad \mathsf{Su} : \mathsf{User} \rightsquigarrow 1 \}
+\]
+
+\begin{align*}
+\text{sessionmgr} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=}\;& \\
+\text{env} \langle \mathit{u}, (\lambda \langle \rangle.\; &\textbf{handle}\; m \langle \rangle\; \textbf{with} \left\{ 
+\begin{array}{ll}
+  \textbf{return}\; res & \mapsto res \\
+  \langle \text{Su}\; \mathit{u'} \Rightarrow \textbf{resume} \rangle & \mapsto \text{env} \langle \mathit{u'}, \textbf{resume} \rangle
+\end{array}\right \.
+ ) \rangle
+\end{align*}
+
+
+
+ 
 \[
 \begin{array}{l}
 \\
@@ -1037,27 +1046,27 @@ This simplified model provides us with a great way to verify the concrete implem
 \end{array}
 \right.
 \end{array}
-\right\}
+\right.
 \end{array}
 \]
-\caption{Effect signature and handler implementation for environment variables in Tiny Unix}
+
+\caption{\textcolor{red}{Effect signature and handler implementation for environment variables in Tiny Unix}}
 \label{fig:env-state-handler}
 \end{figure}
 
-State is implemented somewhat differently in this system, instead of being passed as a parameter into each continuation it uses an approach called dynamic binding. The environment is not passed explicitly, instead it is scoped dynamically by the handler itself. This allows dynamic scoping where the same variable can be bound to different values in different contexts in during execution. We will see how this becomes useful later on in the context of process management, but for now we will verify that this implementation follows the same state laws as before.
+In this system, \textit{state} is implemented somewhat differently. Rather than being passed as a parameter into each continuation, the handlers use an approach called \textbf{dynamic binding}. Here, the current user, scoped dynamically using a parameterised handler, allowing the same variable to be bound to different values in different contexts during the course of an execution. This advantage of this approach will become apparent when the concept of process management is discussed, but for now I will verify that this implementation follows the same state laws as before:
 
-\begin{itemize}
+\begin{enumerate}
     \item Su-Su
     \item Su-Ask
     \item Ask-Su
     \item Ask-Ask
-\end{itemize}
+\end{enumerate}
     
 
-We provide one example here and attach the rest in the appendices \ref{environment-variable-proofs}
-\subsubsection*{Switch-user, Switch-user}
+I provide one example below. For an exhaustive list, see appendice \ref{environment-variable-proofs}
+\subsubsection*{Switch-user, Switch-user (Idempotence of Switch-user)}
 
-sessionmgr<Root, 
 
 \[
 \begin{array}{l}
@@ -1096,30 +1105,33 @@ sessionmgr<Root,
 
 \subsection{Basic Multi-cell State}
 
-This simplified system is less accurate to Unix than Hillerström's "Tiny Unix" but maintains the key functionality (however it loses file linking functionality). From now on we will attempt to reason about how state will interact with other features in our system such as nondeterminism and concurrency. 
+This system presented in this section represents a  simplification of the \textit{basic serial file system} described in Hillerström's "Tiny Unix". However, it does maintain most of the key functionality of the latter. 
 
-This handler for multi-cell state generalises the single-cell model we introduced earlier, replacing the implicit single memory cell with an explicit key-value map. The \lstinline{multiState} handler works in much the same way as the previous one. The main difference is that we expect \lstinline{s} to be a map rather than a single-value. Also note that, in the set case, we use the parameter s, we can no longer discard the current state as we want to update a single key-value pair, not completely overwrite the previous mappings. Both lookup and update are parametrised by the current state, \lstinline{s}.
+The handler for multi-cell state (\textit{see figure \ref{fig:multicell-handler}}) generalises the single-cell model introduced earlier, replacing the single memory cell with a \textbf{key-value map}. This \lstinline{multiState} handler works in a similar way to the single-cell handler. The primary difference being that \lstinline{s} is represented as a map rather than as a single-value. Note that in the set case, we cannot discard the current state as it must only update a single key-value pair and not completely overwrite the previous mappings. Both \textbf{lookup} and \textbf{update} are parametrised by the current state, \lstinline{s}.
 
+\begin{figure}[H]
+\centering
 \[
-\text{state} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
+\text{multiState}\ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
 \begin{array}{ll}
-\text{get}(k_0; k) &\mapsto \text{fun } s \mapsto \text{let } v = \text{lookup}(k_0, s) \text{ in } (k\ v)\ s \\
-\text{set}(k_0, v; k) &\mapsto \text{fun } s \mapsto \text{let s'} = \text{update}([k_0:=v],s) \text{ in } (k\ ())\ s'\ \\
+\text{get}(k_0; k) &\mapsto \text{fun } s \mapsto \text{let } v = \textbf{lookup}(k_0, s) \text{ in } (k\ v)\ s \\
+\text{set}(k_0, v; k) &\mapsto \text{fun } s \mapsto \text{let s'} = \textbf{update}([k_0:=v],s) \text{ in } (k\ ())\ s'\ \\
 \text{return } x &\mapsto \text{fun } \_ \mapsto \text{return } x
 \end{array}
 \right\}
 \]
+\caption{\textcolor{red}{Handler for multicell state}}
+\label{fig:multicell-handler}
+\end{figure}
 
 
-In addition to the properties that held in the single-cell state model, which hold for each key independently, the multicell model allows us to derive additional algebraic properties, the commutativity of operations on disjoint keys. These properties capture the algebraic independence of effects targeting separate parts of the state and are formalised by the following equivalences stated in Pretnar's "The Logic and Handling of
-Algebraic Effects" \cite{Pretnar:2010}:
+
+In addition to the properties that hold in the single-cell state model, which hold for each key independently,  the multicell model has additional associated equational theories for the commutativity of operations on disjoint keys. These properties capture the independence of effects, which target separate parts of the state and are formalised by the following equivalences stated in Pretnar's \textit{The Logic and Handling of
+Algebraic Effects} \cite{Pretnar:2010}:
 \begin{enumerate}
-    \item Disjoint Write-Write Commutativity
-    \[set(k1,v1);set(k2,v2) \equiv set(k2,v2);set(k1,v1)\] 
-    \item Disjoint Write-Read Independence
-        \[set(k1,v1);get(k2) \equiv get(k2);set(k1,v1)\] 
-    \item Disjoint Read-Read Commutativity
-        \[get(k1);get(k2) \equiv get(k2);get(k1)\] 
+    \item Disjoint Write-Write Commutativity \[ \text{set(k\textsubscript{1},v\textsubscript{1});set(k\textsubscript{1},k\textsubscript{2}) $\equiv$ set(k\textsubscript{2},v\textsubscript{2});set(k\textsubscript{1},v\textsubscript{1})} \] 
+    \item Disjoint Write-Read Independence \[ \text{set(k\textsubscript{1},v\textsubscript{1});get(k\textsubscript{2}) $\equiv$ get(k\textsubscript{2});set(k\textsubscript{1},v\textsubscript{1})} \] 
+    \item Disjoint Read-Read Commutativity \[\text{get(k\textsubscript{1});get(k\textsubscript{2}) $\equiv$ get(k\textsubscript{2});get(k\textsubscript{1})} \] 
 \end{enumerate}
 
 These properties are vital as they allow for reasoning about different parts of the system to be treated independently. This kind of modular reasoning is particularly important in the presence of nondeterminism and concurrency, where operations may execute in varying orders.
@@ -1127,7 +1139,7 @@ These properties are vital as they allow for reasoning about different parts of 
 
 \subsection{Verifying Tiny Unix's File System}
 
-The \textit{"Single UNIX Specification"} does not provide as algebraic theory that its conforming systems must implement. Instead it relies on textual documentation describing syntax and semantics. However we can still reason about its intended functionality in terms of the mapped state laws above.
+The \textit{Single UNIX Specification} \cite{SUSv4} does not provide as algebraic theory that its conforming systems must implement. Instead it relies on textual documentation describing syntax and semantics. However we can still reason about its intended functionality in terms of the mapped state laws above.
 
 \begin{itemize}
     \item Reading/Writing/Opening a file which doesn't exist
@@ -1179,6 +1191,10 @@ Abstract notions of nondeterminism state that is is modelled by an abstract alge
 
 \begin{figure}[H]
 \centering
+\[
+\mathsf{fork} : \{ \mathsf{Fork} : 1 \rightarrow \mathsf{Bool} \}
+\]
+
 \[
 \text{nondet} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
 \begin{array}{ll}
@@ -1295,31 +1311,31 @@ if Fork()
 }
 
 \underline{Left Hand Side}
-\[
-\begin{array}{l}
-\quad \equiv \quad (11) \\[5pt]
-\textbf{resume }\text{True} \;\texttt{++}\; \textbf{resume } \text{False} \; [()/x,\; \text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \\ \text{ else Fork()}(s \rightarrow \textbf{if }  s \textbf{ then } b \textbf{ else } c)) \;/\; k] \\[5pt]
+\begin{longtable}{@{}l@{}}
+\quad$\equiv$\quad (11) \\[5pt]
+\textbf{resume } True \texttt{ ++ } \textbf{resume } False\ [()/x,\ fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } a \\
+\quad \textbf{else } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;/\; k] \\[5pt]
 
-\quad \equiv \quad (\text{subst}) \\[5pt]
-\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{True} \\[2pt]
-\texttt{++} \\ 
-\text{fun } r \rightarrow \textbf{with } \text{nondet handle } (\textbf{if } r \textbf{ then } a \text{ else Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;\text{False} \\[5pt]
+\quad$\equiv$\quad (\text{subst}) \\[5pt]
+fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } a \textbf{ else } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c))\ True \\
+\text{++} \\
+fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } a \textbf{ else } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c))\ False \\[5pt]
 
-\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
-\textbf{with } \text{nondet handle } a \;\texttt{++}\; \textbf{with } \text{nondet handle } \text{Fork()}(s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \\[5pt]
+\quad$\equiv$\quad (8, evaluate) \\[5pt]
+\textbf{with } nondet \textbf{ handle } a \texttt{ ++ } \textbf{with } nondet \textbf{ handle } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c) \\[5pt]
 
-\quad \equiv \quad (11) \\[5pt]
-a \;\texttt{++}\; (\text{resume True} \;\texttt{++}\; \text{resume False} \; [()/x,\; \text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c \;/\; k]) \\[5pt]
+\quad$\equiv$\quad (11) \\[5pt]
+a \texttt{ ++ }(resume True \texttt{ ++ } resume False\ [()/x,\ fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c \;/\; k]) \\[5pt]
 
-\quad \equiv \quad (\text{subst}) \\[5pt]
-a \;\texttt{++}\; (\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{True} \\
+\quad$\equiv$\quad (\text{subst}) \\[5pt]
+a \texttt{ ++ } (fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c)\ True \\
 \texttt{++} \\
-(\text{fun } s \rightarrow \textbf{if } s \textbf{ then } b \textbf{ else } c) \;\text{False} \\[5pt]
+(fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c)\ False \\[5pt]
 
-\quad \equiv \quad (8,\; \text{evaluate}) \\[5pt]
-a \;\texttt{++}\; (b \;\texttt{++}\; c)
-\end{array}
-\]
+\quad$\equiv$\quad (8, evaluate) \\[5pt]
+a \texttt{ ++ } (b \texttt{ ++ } c) \\
+\end{longtable}
+
 
 
 \underline{Right Hand Side}
@@ -1362,7 +1378,7 @@ a \;\texttt{++}\; (b \;\texttt{++}\; c)
 
 
 \section{State Models and Handler Composition}
-In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. \textcolor{red}{describe in terms of monads? Say much work has been done in this area. }
+In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. \textcolor{red}{describe in terms of monads? Say much work has been done in this area. Also explain how effect handlers are more modular than Monads as all we need to do is adjust handler order whereas monads require different encodings? }
 
 We obtain two different models of state depending on this ordering \textcolor{red}{we must define local and global state formally as these are loaded terms}:
 \begin{itemize}
@@ -1380,11 +1396,8 @@ We now go onto describe the properties of global and local state as described in
 \textcolor{red}{As local state, we are referring to  state that is scoped to a single process and is not observable or accessible by any other process in the system. Examples include process-local variables, file descriptor tables, or other private data that do not persist across process boundaries or influence other concurrent executions. 
 }
 
-
-
 \subsubsection{Independent and Deterministic State} 
-
-In From High to Low: Reasoning About Effect Implementations \cite{hightoLow}, Tang and Schrijvers show that local state, when composed with nondeterminism using the \lstinline{StateT} monad transformer \cite{jones1995}, preserves the associativity and identity laws of the state monad. This ensures that state remains deterministic within each nondeterministic branch.
+In From High to Low: Reasoning About Effect Implementations \cite{hightoLow}, Tang and Schrijvers show that local state, when composed with nondeterminism using the \lstinline{StateT} monad transformer \cite{jones1995}, preserves the associativity and identity laws of the state monad. When nondeterministic branches are composed using this monad, each result–state pair is computed in isolation, then collected into the list of all possible outcomes. This structural separation guarantees that no two branches share state updates \cite{JustDoIt}. This ensures that state remains deterministic within each nondeterministic branch and the 4 basic state laws hold.
 
 In this handler configuration, the state handler is applied to each branch, allowing each to maintains a separate, independent state. This isolation ensures that there is no interference between parallel computations. Within each branch, the state is deterministic, the state laws shown in previous sections hold.
 
@@ -1430,7 +1443,7 @@ We can see, directly from handler structure, when rewriting these laws in handle
 }
 \end{array}
 \]
-\caption{Standard state laws remain valid under local state, as all state operations are resolved before nondeterminism is introduced.}
+\caption{Standard state laws remain valid under local state, as all state operations are resolved within each branch rather within between them.}
 \label{fig:local-state-laws}
 \end{figure}
 
@@ -1439,6 +1452,7 @@ We can see, directly from handler structure, when rewriting these laws in handle
 
 
 \begin{longtable}{@{}l@{}}
+
 \textbf{with } nondet \textbf{ handle} \\ 
 \quad \textbf{with } state \textbf{ handle} \\
 \quad\quad \text{Fork()(p.if p then set(x)(a.C\textsubscript{1}) else set(y)(b.C\textsubscript{2}))} \\
@@ -1466,8 +1480,17 @@ We can see, directly from handler structure, when rewriting these laws in handle
 
 
 \subsubsection{Impermanence} 
-The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually. Once a branch terminates, its state is no longer stored.
+The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually. Once a branch terminates, its state is no longer stored. There is not a direct correspondence to the monadic proofs we have seen before, however we can see an analogy with the fail operation $\varnothing$. 
 
+\[
+\textbf{put-right-identity}: \quad \texttt{put}\;s \gg \varnothing = \varnothing
+\]
+\vspace{-1em}
+\[
+\textbf{get-right-identity}: \quad \texttt{get}\; \gg \varnothing = \varnothing
+\]
+
+Our return clause  simply returns a value and does not resume the continuation thereby losing all variable bindings and associated state. Since in local state semantics each nondeterministic branch is evaluated with its own copy of the state, any equation that holds in the pure state setting continues to hold per branch.
 
 
 
@@ -1514,7 +1537,8 @@ Memory mappings created in the parent shall be retained in the child process
 \end{tcolorbox}
 
 
-Tang and Schrijvers \cite{fromHighToLow} also state that the local state Monad displays the following two properties:
+
+Tang and Schrijvers \cite{tang2025high} also state that the local state Monad displays the following two properties:
 
 \vspace{-1em}
 \[
@@ -1527,10 +1551,9 @@ Tang and Schrijvers \cite{fromHighToLow} also state that the local state Monad d
 \texttt{get} \gg= (\lambda x.\, k_1\, x \sqcup k_2\, x) = (\texttt{get} \gg= k_1) \sqcup (\texttt{get} \gg= k_2) 
 \]
 
-Having these right distributivity properties show us t
+Having these right distributivity properties show us how state is inherited from parent to child.
 
 
-\textcolor{red}{show how get and set distribute over the fork (put/get left distributivity)}
 
 \textcolor{red}{show get;return x=  x and set(a); return x = x}
 
@@ -1602,6 +1625,13 @@ Global state lacks many of the algebraic properties we observed in the local cas
 
 \textcolor{red}{Our algebra defines which operations are performed and how they are composed structurally, but they don't have a notion of time/order and so don't describe operational runtime behaviour. We rely on external ordering mechanisms such as scheduling and mutexes to define how these are actually executed.
 }
+
+\textcolor{red}{Some models discuss the put-or law. This law is valid in an operational model where state updates are evaluated from left to right}
+
+\[
+\textbf{put-or:} \quad (put\ s \gg m) \oplus n = put\ s \gg (m \oplus n) 
+\]
+
 
 \textcolor{red}{Global state cannot be described as a monad in this setting, because it lacks a coherent distributive interaction with nondeterminism. The absence of this law means that basic monadic composition, such as associativity and bind chaining}
 
@@ -1754,18 +1784,28 @@ Processes can terminate successfully by running to completion, or they can termi
 Exceptions disrupt all of the algebraic properties that held before hand, these properties now only hold on the assumption that there is no exception in their scope. Exceptions only hold one property, that any code that succeeds them is semantically irrelevant.
 
 
-\effectDef{exit n}{\text{Exit : Int} \rightarrow 0}
+\begin{figure}[H]
+\centering
 
+% Effect signature
+\effectDef{\textbf{Status}}{\text{Exit : Int} \rightarrow 0}
+
+\vspace{-1em}
+
+% Handler implementation
 \[
 \mathrm{status} \;\overset{\mathrm{def}}{=}\;
 \mathrm{handler} \;\left\{
 \begin{array}{ll}
-  \mathrm{\textbf{return}\:\_} & \mapsto 0 \quad\\[0.5ex]
-  \langle\!\langle \mathrm{Ask} \langle\rangle\rangle &  \mapsto n \quad\\[0.5ex]
- 
+  \mathrm{\textbf{return}\:\_} & \mapsto 0 \\[0.5ex]
+  \langle\!\langle \mathrm{Exit} \langle n\rangle\rangle & \mapsto n \\[0.5ex]
 \end{array}
 \right\}
 \]
+
+\caption{Effect signature and handler implementation of exceptions via the \textbf{Status} effect.}
+\label{fig:status-handler}
+\end{figure}
 
 \subsection*{Absorption}
 
@@ -1813,19 +1853,13 @@ n
 
 
 \section{Process Synchronisation}
-
-
 So far we have introduced a basic time-sharing, using interrupts and the scheduler, that allows the interleaving of process execution. However, as mentioned before, the way that processes are interleaved is non-deterministic, in other words processes don't know the order in which the will be executed. 
 
 This is a problem because, as we have demonstrated, many of our effects are non-commutative meaning that the order of execution is important for correctness. This creates what is known as a "race condition", A race condition arises when the correctness of a program depends on the nondeterministic interleaving of concurrent operations on shared state. Without explicit synchronisation, the outcome is unpredictable and may differ across runs, making correct behaviour accidental rather than guaranteed.
 
 Currently the only way to guarantee execution order is to execute all the steps, in the same process, sequentially with no interrupts which defeats the point of our time sharing system as no interleaving is possible in this time, which blocks the other processes.
 
-To introduce flexibility around process interleaving whilst maintaining guarantees about execution ordering we introduce two features
-
-\textcolor{red}{Write about the problem of reasoning about the scheduler, something to do with mutually parameterised data types or smn}
-
-
+To introduce flexibility around process interleaving whilst maintaining guarantees about execution ordering we introduced two features
 \begin{itemize}
     \item \lstinline{Wait} \textbf{system calls: } This allows a parent to suspend execution until its child process (identified by its process id) has finished executing. Think of this as introducing a causal dependency, the parent can only when the child finishes.
     \item \textbf{Mutexes: } This a process to lock a resource, meaning that whilst the process holds this lock, no other process can alter this resource. This guarantees that between interrupts other processes don't alter the resource, which could potentially lead to file corruption. 
@@ -1838,16 +1872,12 @@ Combining these two properties by;
     \item Unlocking the resource to allow other processes to access it
 \end{enumerate}
 
-we can provide guarantees about write safety whilst still allowing for concurrency.
- 
-
-\underline{Scenario 1} 
-The 
+we can provide partial ordering guarantees about write safety whilst still allowing for concurrency.
 
 
 Reasoning about the scheduler is very difficult because it introduces non-determinism into our system. Unlike the algebraic effects, which have clear equational rules, the behaviour of the scheduler depends on the runtime state of the process queue and the particular order in which processes are resumed. 
 
-
+Unfortunately reasoning about the scheduler has long been difficult to reason about \cite{}. As noted in \textit{The Logic and Handling of Algebraic Effects}, recursive definitions over both parameters are not primitively recursive.
 
 
 
