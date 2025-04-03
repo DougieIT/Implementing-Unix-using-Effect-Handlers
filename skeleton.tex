@@ -1572,110 +1572,17 @@ The limits of algebraic reasoning for global state evaluation are shown below. I
 It will be seen that this creates a nondeterministic outcome, as the order in which the scheduler chooses to run these branches will affect the final state of the system. 
 
 
-
-
-\section{Properties of Processes}
-
-Having clarified the algebraic properties of individual effects and the properties of global and local scope depending on handler ordering, we now look at what properties processes maintain when combining  non determinism, global state, local state.
-
-In this section, we also introduce the exit effect, a non-resumable control operation that disrupts sequencing, and explore how its interaction with other handlers further affects compositional reasoning.
-
-
-\subsubsection*{Local State Breaks Associativity}
-
-In the purely nondeterministic setting, forking is associative, i.e. the grouping/nesting does not affect its semantics. However in the 
-
-\textcolor{red}{According to most equational theories nondeterminism is supposed to be associative in }
-
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-if Fork(){
-    // A
-    if Fork(){
-        // A continued
-        pass
-    }
-    else{
-        // C
-    }
-}
-else{
-    set("B")
-}
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-if Fork(){
-    A
-} 
-else{
-    // B
-    set("B");
-    if Fork(){
-        // B continued
-        pass
-    }
-    else{
-        // C
-        C
-    }
-}
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-2em}
-
-
-\subsubsection*{Local State Full Distributivity}
-Whilst left distributivity does not hold in general, it does hold in the special case of idempotent effects, where repeated applications of R are equivalent to applying it once. As right distributivity holds trivially through algebraicity of sequencing Local State is fully distributive 
-
-\vspace{-2em}
-\begin{table}[H]
-\centering
-\begin{tabular}{p{0.45\textwidth} c p{0.45\textwidth}}
-\begin{lstlisting}
-set(x);
-if Fork(){
-    P;
-}
-else{
-    Q;
-}
-\end{lstlisting}
-&
-&
-\begin{lstlisting}
-if Fork(){
-    set(x); 
-    P;
-}
-else{ 
-    set(x); 
-    Q;
-}
-\end{lstlisting}
-\end{tabular}
-\end{table}
-\vspace{-2em}
-
-
-\subsection{Summary of Properties Under Composition}
-
-
 \section{Exceptions}
-Processes can terminate successfully by running to completion, or they can terminate by performing an exit system call. The exit call takes a numeric argument indicating the exit status of the process. Unlike other operations exit does not allow for continuation, it discards the remaining computation and terminates execution immediately.
+Processes can terminate successfully by running to completion, or they can terminate by performing an \textit{exit} system call, i.e. an exception. The \textit{exit} call takes a numeric argument indicating the exit status of the process. Unlike other operations, exit does not allow for continuation; it discards the remaining computation and terminates execution immediately.
 
-Exceptions disrupt all of the algebraic properties that held before hand, these properties now only hold on the assumption that there is no exception in their scope. Exceptions only hold one property, that any code that succeeds them is semantically irrelevant.
+When composed with other effects, exceptions can break the algebraic properties that the individual effects held in isolation (\textcolor{red}{can you be specific about the scope of the exception handler}). Algebraic properties, therefore, only hold on the assumption that the computation has no exceptions. An exception holds only one property, namely that any operations that succeeds it are semantically irrelevant.
 
 
 \begin{figure}[H]
 \centering
 
 % Effect signature
-\effectDef{\textbf{Status}}{\text{Exit : Int} \rightarrow 0}
+\effectDef{\textbf{Status}}{\text{exit : Int} \rightarrow 0}
 
 \vspace{-1em}
 
@@ -1685,7 +1592,7 @@ Exceptions disrupt all of the algebraic properties that held before hand, these 
 \mathrm{handler} \;\left\{
 \begin{array}{ll}
   \mathrm{\textbf{return}\:\_} & \mapsto 0 \\[0.5ex]
-  \langle\!\langle \mathrm{Exit} \langle n\rangle\rangle & \mapsto n \\[0.5ex]
+  \langle\!\langle \mathrm{exit} \langle n\rangle\rangle & \mapsto n \\[0.5ex]
 \end{array}
 \right\}
 \]
@@ -1694,23 +1601,20 @@ Exceptions disrupt all of the algebraic properties that held before hand, these 
 \label{fig:status-handler}
 \end{figure}
 
-\subsection*{Absorption}
-
-The absorption property states that once an exit operation is called within a computation, any further computation is irrelevant. The following formalises the property that, whatever comes after the exit, does not affect the behaviour of the program:
-
-\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
-
-Because Exit n returns type 0, the uninhabited type, it cannot yield a result. To embed it in a computation expecting a value of type $\alpha$, we use the absurd function to coerce from the empty type to $\alpha$. This reflects that any code after Exit n is unreachable, and ensures the expression remains well-typed.
+In the effect signature above, because \lstinline{Exit n} returns type \lstinline{0}, i.e. the uninhabited type, it cannot yield a result. To embed it in a computation expecting a value of type $\alpha$, we use the \lstinline{absurd} function to coerce it from the empty type to type $\alpha$, this ensures the expression remains well-typed.
 
 \[
 \mathrm{exit\:n} \;\overset{\mathrm{def}}{=}\;
-\mathrm{handler} \;\left\{
-\begin{array}{l}
-  \text{absurd\:(\textbf{do}\:Exit\:n)} \quad\\[0.5ex]
-
-\end{array}
-\right\}
+  \text{absurd\:(\textbf{do}\:Exit\:n)}
 \]
+
+
+The behaviour of an \lstinline{exit} operation is described by the absorption property. When \lstinline{exit} is called within a computation, any continuation is rendered irrelevant. The absorption property of \lstinline{Exit n} is shown below:
+
+\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
+
+
+{\large \textbf{Proof of \textit{Absorption}}}
 
 \underline{Left Hand Side}
 
@@ -1773,13 +1677,19 @@ Unfortunately reasoning about the scheduler has long been difficult to reason ab
 
 \section{Reasoning Conclusions}
 
-In this section we have demonstrated how to use algebraic equivalences to reason about effect handlers. We first examined different models of state depending on how we composed the nondeterminism and state handlers, which corresponded to global file system state and process local state. We verified that each of these models fulfilled the properties that Unix expected them to have. 
+In this chapter I showed how algebraic equivalences can be used to reason about the behaviour of effect handlers. I began with a simplified model of state, which enabled reasoning about environment variables in my system. I then tried to extend this method to a more complex state model for reasoning about the file system. However, this approach quickly became impractical, as the equivalences grew too complex to manage.
 
-We then went on to reason about other interesting properties that the equivalences allowed us to show. This helped to verify that certain program transformations are valid and allowed us to simplify our code. 
 
-We also discovered that many of the rules that held in an isolated setting break down under composition. 
+I then discussed the forking operation and considered the properties of nondeterminism in our system, demonstrating how they differ from notion of nondeterminism found in abstract equational theories.
 
-It is very difficult to reason about any properties which rely on the scheduler. This makes reasoning about any forms of process synchronsiation or interprocess communication very difficult to do. Unfortunately effects like \lstinline{Wait} or \lstinline{Acquire} \lstinline{Release} which introduce partial order semantics can't be easily reasoned about using our equivalences as they depend upon the dynamic execution state of our system.
+I explored two models of state, local and global, determined by the composition order of the \textit{nondeterminism} and \textit{state} handlers. I highlighted an analogy: global state corresponds to shared file system state, while local state models process-local state. For each variant, I verified that the algebraic properties required by Unix specifications were preserved.
+
+
+I then went on to reason about the properties of our \lstinline{status} handler showing that exceptions only hold the absorption property, and showed that many of the rules that held in an isolated setting break down under composition with this handler. 
+
+\textcolor{red}{It is very difficult to reason about any properties which rely on the scheduler. This makes reasoning about any forms of process synchronsiation or interprocess communication very difficult to do. Unfortunately effects like \lstinline{Wait} or \lstinline{Acquire} \lstinline{Release} which introduce partial order semantics can't be easily reasoned about using our equivalences as they depend upon the dynamic execution state of our system.}
+
+
 
 \chapter{Conclusions}
 
