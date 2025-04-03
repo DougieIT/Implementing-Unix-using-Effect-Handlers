@@ -1018,15 +1018,16 @@ Following the method used in the single-cell state model described above, we can
 \]
 
 \begin{align*}
-\text{sessionmgr} \langle \mathit{u}, m \rangle \;\overset{\mathrm{def}}{=}\;& \\
-\text{env} \langle \mathit{u}, (\lambda \langle \rangle.\; &\textbf{handle}\; m \langle \rangle\; \textbf{with} \left\{ 
+\text{sessionmgr} \langle u, m \rangle \;\overset{\mathrm{def}}{=}\;& \\
+\quad \text{env} \langle u, (\lambda \langle \rangle.\; &\textbf{handle}\; m \langle \rangle\; \textbf{with} \\
+&\left\{
 \begin{array}{ll}
   \textbf{return}\; res & \mapsto res \\
-  \langle \text{Su}\; \mathit{u'} \Rightarrow \textbf{resume} \rangle & \mapsto \text{env} \langle \mathit{u'}, \textbf{resume} \rangle
-\end{array}\right \.
- ) \rangle
+  \langle \text{Su}\; u' \Rightarrow \textbf{resume} \rangle & \mapsto \text{env} \langle u', \textbf{resume} \rangle
+\end{array}
+\right.
+) \rangle
 \end{align*}
-
 
 
  
@@ -1134,35 +1135,35 @@ Algebraic Effects} \cite{Pretnar:2010}:
     \item Disjoint Read-Read Commutativity \[\text{get(k\textsubscript{1});get(k\textsubscript{2}) $\equiv$ get(k\textsubscript{2});get(k\textsubscript{1})} \] 
 \end{enumerate}
 
-These properties are vital as they allow for reasoning about different parts of the system to be treated independently. This kind of modular reasoning is particularly important in the presence of nondeterminism and concurrency, where operations may execute in varying orders.
+The above properties are vital as they allow for reasoning about different parts of \textit{state} to be treated independently. This ability is particularly important in the presence of concurrency, where operations may execute in nondeterministic orderings.
 
 
-\subsection{Verifying Tiny Unix's File System}
+\subsection{Reasoning about Tiny Unix's File System}
 
-The \textit{Single UNIX Specification} \cite{SUSv4} does not provide as algebraic theory that its conforming systems must implement. Instead it relies on textual documentation describing syntax and semantics. However we can still reason about its intended functionality in terms of the mapped state laws above.
+The \textit{Single UNIX Specification} \cite{SUSv4} does not provide an algebraic theory that conforming systems must follow. Rather, it relies on textual documentation describing the syntax and semantics for implementation. However, we can still reason about its intended functionality in terms of the \textit{state} laws above and the following system-specific exceptional/edge cases:
 
 \begin{itemize}
-    \item Reading/Writing/Opening a file which doesn't exist
-    \item File linking breaking disjoint key write commutativity 
-    \item Dangling symbolic link
+    \item \textbf{IO operations} - performed on a file which doesn't exist
+    \item \textbf{File linking} - we can show how this operation can break the disjoint key-write commutativity property
+    \item \textbf{Dangling symbolic links} - where a link no longer points to a valid file
 \end{itemize}
 
-Unfortunately attempting to reason about the state model directly in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply equational reasoning techniques, each small step in the computation rapidly branched out due to the way different layers of the file system, directories, i nodes, and data blocks, depended on one another.Unlike in the simplified examples, reasoning about the serial file system's correctness depended on the interaction between multiple nested data structures, namely; the Directory, the i-node list, the data region. 
+Unfortunately, though, reasoning about the \textit{basic serial file system} in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply these equivalences, each small step  rapidly branched the number of computation paths that had to be followed due to the way different layers of the file system e.g. directories, iNodes, and data blocks, depend on one another's function calls. 
 
-Each structure relied on invariants maintained by the others: directory entries had to point to valid i-nodes, i-nodes had to reference valid and allocated data blocks, and all pointers needed to remain consistent throughout execution. This tight coupling made it difficult to reason about each component in isolation.
+Unlike the prior simplified examples, reasoning about Hillerström's serial file system requires one to take into account the interactions between multiple nested data structures, such as the directory, the iNode list andthe data region. Each of these structures relied on invariants maintained by the others. For example, directory entries had to point to valid iNodes, iNodes had to reference valid and allocated data blocks, and both pointers had to remain consistent throughout execution. This tight coupling made it impractical to reason about each component in isolation.
 
-Performing operations such as file writing or creation involved updating global state which involved multiple layers of functions and handlers including get, put, lookup, modify, fileRW, fopen, fwrite, withDefault etc.The need to thread through and update each of these components made algebraic reasoning impractical.
+Operations such as file writing and creation involved multiple layers of functions and handlers for operations including \lstinline{get}, \lstinline{put}, \lstinline{lookup}, \lstinline{modify}, \lstinline{fileRW}, \lstinline{fopen}, \lstinline{fwrite}, \lstinline{withDefault} etc. The need to thread through and update each of these components made algebraic reasoning impractical.
 
 
 \section{Process Forking}
 
-Process forking introduces nondeterministic branching into our system which exhibits a number of interesting algebraic properties. By first establishing these properties in isolation we provide a basis for understanding how forking composes with other effects in our system. In subsequent sections we will see that Forking breaks many of the algebraic properties that previously held in sequential contexts.
+Process forking introduces nondeterminism into the system, giving rise to a number of interesting algebraic properties. By first establishing the properties of nondeterminism in isolation, we establish a basis for understanding how forking composes with other effects in our system. In subsequent sections, we will see that forking breaks many of the algebraic properties that held in previous sequential contexts.
 
-Whilst the algebraic structure of forking is defined in the effect handler, the operational semantics is defined by our scheduler. As the scheduler determines the execution order, from the perspective of a single process, the system appears non-deterministic; it cannot know when or how other processes will affect the overall state of the system. \textcolor{red}{The scheduler can adopt different policies e.g. fairness, liveness etc which can affect the execution order which are outwith our algebra.}
+Whilst the algebraic structure of forking is defined in an effect handler, the operational semantics are defined by our scheduler. Since the scheduler determines the execution order, from the perspective of a single process, the system will appear non-deterministic, i.e. it cannot be known when or how other processes will affect the overall state of the system. The scheduler can adopt different policies, e.g. fairness and liveness, which can affect the execution order, putting them outwith our algebra.
 
 
-\subsection{Equational Theories of Non Determinism}
-Abstract notions of nondeterminism state that is is modelled by an abstract algebraic structure known as the \textit{semi-lattice} laws \cite{Pretnar:2010} which is governed by the following algebraic properties:
+\subsection{Equational Theories of Nondeterminism}
+Abstract notions of nondeterminism can be modelled by an algebraic structure known as a \textit{semi-lattice} \cite{Pretnar:2010}. A semi-lattice is governed by the following algebraic laws:
 
 \begin{figure}[H]
 \centering
@@ -1180,9 +1181,7 @@ Abstract notions of nondeterminism state that is is modelled by an abstract alge
 
 
 
-
-
-\textcolor{red}{However, this abstraction becomes problematic when one attempts to model or implement concrete algorithms that resolve nondeterministic choices, such as our scheduler.  the symmetry and idempotency assumed by semi-lattices is too strong to hold. Associativity holds in the presence of any other effect \cite{NotByEquationsAlone}}
+However, the semi-lattice model of nondeterminism becomes problematic when one attempts to implement concrete algorithms that resolve nondeterministic choices, such as those found in our scheduler. In this case, the symmetry and idempotency assumed for nondeterministic operations by semi-lattices are too strong to hold. Associativity holds in the presence of any other effect \cite{NotByEquationsAlone}. \textcolor{red}{ref?}
 
 
 
@@ -1208,12 +1207,12 @@ Abstract notions of nondeterminism state that is is modelled by an abstract alge
 \end{figure}
 
 
-Unfortunately, in Hillerström's implementation of nondeterminism \ref{nondetImplementation}, forking is neither commutative nor associative. This makes sense for idempotency as two identical processes are clearly not equivalent to one process. Commutativity is not valid either as the order in which the processes are returned could affect observational behaviour when under scheduling.
+In Hillerström's implementation of nondeterminism (Figure  \ref{nondetImplementation}), forking isn't commutative and doesn't have an identity. This makes sense for idempotency, as two identical processes are clearly not equivalent to one process. Commutativity is not valid either, as the order in which the processes are returned could affect observational behaviour when they are executed by the scheduler.
 
-\textcolor{red}{say we run in to our first problem suggested by "Not by Equations Alone", equational theories often exert unrealistic demands on their implementations, they cite nondeterminism as an example of this}
+This problem is illustrated by  O. Kiselyov et al in their paper \textit{Not by equations alone: Reasoning with extensible effects} \cite{kiselyov2021not}. They show that equational theories can often exert unrealistic constraints on their concrete implementations and cite nondeterminism as an example of this problem.
 
 
-However we can show that, in the absence of other effects, forking is associative. In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains unchanged remains the same, regardless of how the forks are nested. The code below demonstrates this in practice.
+However, it can be shown that in the absence of other effects, forking is associative. In this context, the order in which fork operations are grouped does not affect the set of possible execution paths. The observable behaviour remains the same, regardless of how the forks are nested. The code and process structures below demonstrate this in practice:
 
 \vspace{-2em}
 \begin{figure}[H]
@@ -1256,7 +1255,7 @@ else{
 \vspace{-2em}
 
     \caption{Equivalent code structures under associative forking}
-    \label{fig:enter-label}
+    \label{fig:code-structures}
 \end{figure}
 
 
@@ -1283,12 +1282,12 @@ Server forks Worker 1
     \label{fig:process-restructuring}
 \end{figure}
 
-Structural properties describe how computations may be grouped and rearranged without changing the meaning of a program. This makes them especially useful for restructuring code, as they allow us to transform the shape of a program without affecting its behaviour. In particular, associativity enables us to restructure nested control flows, revealing opportunities for parallel execution. This facilitates tree-based parallel execution, allowing nested computations to be restructured into balanced, parallel-friendly forms \ref{fig:process-restructuring}.
+Structural properties describe how computations may be grouped and rearranged without changing the observable behaviour of a program. This makes them especially useful for restructuring code, as they allow us to transform the shape of a program without affecting its behaviour. In particular, associativity enables us to restructure nested computations, revealing opportunities for tree-based parallel execution, allowing nested computations to be restructured into a more balanced structure (\textit{see figure  \ref{fig:process-restructuring}}).
 
 
 
-
-\underline{Proof}
+\vspace{1em}
+\textbf{\large{Proof of Associativity}}
 
 In the continuation passing style, we  write the associativity property of \lstinline{nondet} as:
 \equivalenceStatement{nondet}
@@ -1378,28 +1377,25 @@ a \texttt{ ++ } (b \texttt{ ++ } c) \\
 
 
 \section{State Models and Handler Composition}
-In the previous sections we reasoned about state in a  sequential setting and introduced nondeterminism through process forking. We now turn to the question of how these two effects interact when composed. The order of composition of the state and nondeterminism handlers, significantly impacts the semantics of stateful computations. \textcolor{red}{describe in terms of monads? Say much work has been done in this area. Also explain how effect handlers are more modular than Monads as all we need to do is adjust handler order whereas monads require different encodings? }
+In the previous sections I reasoned about state in a  sequential setting and introduced the forking operation and the concept of nondeterminism. I now turn to the question of how these two effects interact when composed. 
 
-We obtain two different models of state depending on this ordering \textcolor{red}{we must define local and global state formally as these are loaded terms}:
+The order of composition of the \textit{state}  and \textit{nondeterminism} handlers (figures \ref{fig:state-handler} and \ref{nondetImplementation}) has a significant impact on the semantics of stateful computations. There are two possible models of \textit{state}  depending on this ordering: 
 \begin{itemize}
-    \item Local State (outer nondeterminism, inner state): Here each nondeterministic branch maintains its own independent state, akin to local variables within a program. The scope is private to the process and only lasts as long as the process lasts.
-    \item Global State (outer state, inner nondeterminism): Here the same state is shared among all branches of a nondeterministic computation similar to the case of a global file system.
+    \item \textbf{Local State} (outer nondeterminism, inner state) - here, each nondeterministic branch maintains its own locally scoped, independent state, akin to local variables within a program.  The state is tied to the process and only lasts for the duration of the process. This is similar to the concept of \textit{backtrackable} state \cite{backtrackable}, where a change to the state of a process is automatically undone when the computation path finishes. 
+    \item \textbf{Global State} (outer state, inner nondeterminism) - here, the same state is shared among all branches of a nondeterministic computation in a manner similar to that  of a global file system. As a result, branches can interfere with one another when reading and writing to the same shared state.
 \end{itemize}
 
 
+Much work has been done to describe the properties that arise from the composition of nondeterminism and state when using \textit{Monads} \cite{monads}. As I will now demonstrate the composition of my implementations of nondeterminism and state handlers have exhibit the same corresponding properties. 
 
-We now go onto describe the properties of global and local state as described in the latest version of the Open Group Unix Specifications \cite{posix}. Our goal is to show how these behaviours are captured within our effect handler model, and to contrast this with the conventional imperative mechanisms typically used to implement such functionality in Unix-like systems. \textcolor{red}{explain these in terms of the algebraic properties of local/global state described in papers}
+I now describe the properties of global and local state as defined in the latest version of the \textit{Open Group Unix Specifications} \cite{posix}. My goal here is to show how these behaviours are captured within my effect handler model. I will contrast my implementation with conventional imperative approaches, typically used to implement similar functionality in Unix-like systems. 
 
+\subsection{Local State: Unix Specifications}
 
-\subsection{Local State : Unix Specifications}
+In this context, the term \textit{local state} refers to state that is scoped to a single process and is not observable to or accessible by any other process in the system. Examples include process-local variables, file descriptor tables, and other private data that do not persist across process boundaries. 
 
-\textcolor{red}{As local state, we are referring to  state that is scoped to a single process and is not observable or accessible by any other process in the system. Examples include process-local variables, file descriptor tables, or other private data that do not persist across process boundaries or influence other concurrent executions. 
-}
 
 \subsubsection{Independent and Deterministic State} 
-In From High to Low: Reasoning About Effect Implementations \cite{hightoLow}, Tang and Schrijvers show that local state, when composed with nondeterminism using the \lstinline{StateT} monad transformer \cite{jones1995}, preserves the associativity and identity laws of the state monad. When nondeterministic branches are composed using this monad, each result–state pair is computed in isolation, then collected into the list of all possible outcomes. This structural separation guarantees that no two branches share state updates \cite{JustDoIt}. This ensures that state remains deterministic within each nondeterministic branch and the 4 basic state laws hold.
-
-In this handler configuration, the state handler is applied to each branch, allowing each to maintains a separate, independent state. This isolation ensures that there is no interference between parallel computations. Within each branch, the state is deterministic, the state laws shown in previous sections hold.
 
 \begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.899}]
     Any modifications to the data in
@@ -1410,77 +1406,31 @@ In this handler configuration, the state handler is applied to each branch, allo
 A process is an address space with one or more threads executing within that address space. Each process has its own private memory and system resources
 \end{tcolorbox}
 
-We can see, directly from handler structure, when rewriting these laws in handler notation, that they remain trivially valid: the state handler processes all effects before any branching occurs.
+The specification above states that each process should maintain its own independent state. However, it does not describe a method for implementing this rule.
+
+In their paper, \textit{From High to Low: Reasoning About Effect Implementations} \cite{tang2025high}, Tang and Schrijvers show how the composition of nondeterminism and state using the \lstinline{StateT} monad transformer \cite{jones1993composing}, preserves the associativity and identity laws of the state monad. They show that when nondeterministic branches are composed using this monad, each result–state pair is computed in isolation before being collected into the list of all possible outcomes. This structural separation ensuring  that no two branches share state updates \cite{}, ensuring that local state remains deterministic within each computational path, and that the four state laws still hold.
+
+In the local state handler configuration, a separate state handler is applied to each computation path, allowing each to maintain independent state. This isolation ensures that there is no interference between parallel computations. Within each branch, the state is deterministic and the state laws shown in an earlier section hold.
+
+It will be seen from the composed handlers structure (figure \ref{fig:local-state-laws}) that the state laws still hold in this composition. This composition ensures that operations like \lstinline{get} and \lstinline{set} are handled immediately within each branch, resulting in deterministic state updates.
 \begin{figure}[H]
 
 \centering
+\vspace{1em}
+\includegraphics[width=1\textwidth]{localStateHandlerComp.png}
 
-\vspace{-0.0em}
-\[
-\begin{array}{@{}l@{}l@{}l@{}l@{}}
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{set(a)(x.set(b)(y.C))}
-}
-&
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{set(a)(x.get()(y.C))}
-}
-&
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{get()(x.set(b)(y.C))}
-}
-&
-\shortstack{
-  \textbf{with } \text{nondet handle} \\
-  \textbf{with } \text{state handle} \\
-  \quad\quad\text{get()(x.get()(y.C))}
-}
-\end{array}
-\]
-\caption{Standard state laws remain valid under local state, as all state operations are resolved within each branch rather within between them.}
+\caption{Standard state laws remain valid under local state, as all state operations are resolved within each branch rather than between them.}
 \label{fig:local-state-laws}
 \end{figure}
 
 
-
-
-
-\begin{longtable}{@{}l@{}}
-
-\textbf{with } nondet \textbf{ handle} \\ 
-\quad \textbf{with } state \textbf{ handle} \\
-\quad\quad \text{Fork()(p.if p then set(x)(a.C\textsubscript{1}) else set(y)(b.C\textsubscript{2}))} \\
-\quad$\equiv$ (12) \\[5pt]
-\textbf{with } nondet \textbf{ handle} \\
-\quad \text{Fork()}(a.\ \textbf{with } state \textbf{ handle } (\textbf{if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2}))) \\
-\quad$\equiv$ (11) \\[5pt]
-\textbf{resume } x \text{ ++ } \textbf{resume } y \\
-\quad [()/v,\ \text{fun } a $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2})] \\
-\quad$\equiv$ (subst) \\[5pt]
-\text{fun } a $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{1})\ x \\
-\text{++} \\
-\text{fun } a $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle if } a \text{ then set(x)}(b.C\textsubscript{1}) \text{ else set(y)}(d.C\textsubscript{2})\ y \\
-\quad$\equiv$ (8, simplify) \\[5pt]
-\textbf{with } nondet,\ state \textbf{ handle set(x)}(b.C\textsubscript{1}) \\
-\text{++} \\
-\textbf{with } nondet,\ state \textbf{ handle set(y)}(d.C\textsubscript{2}) \\
-\quad$\equiv$ (11) \\[5pt]
-\text{fun } \_ $\rightarrow$ (k ())\ s\ [\text{x}/s,\ \text{fun } b $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle }(c.C\textsubscript{1})] \\
-\text{++} \\
-\text{fun } \_ $\rightarrow$ (k ())\ s\ [\text{y}/s,\ \text{fun } d $\rightarrow$ \textbf{with } nondet,\ state \textbf{ handle }(e.C\textsubscript{2})] \\
-\end{longtable}
-
-
-
-
 \subsubsection{Impermanence} 
-The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually. Once a branch terminates, its state is no longer stored. There is not a direct correspondence to the monadic proofs we have seen before, however we can see an analogy with the fail operation $\varnothing$. 
+\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.554}]
+Memory mappings that were created in the process shall be unmapped before the process
+ is destroyed.
+ \end{tcolorbox}
+ 
+The specification above advises that a process's local state should be lost when the process is destroyed. Whilst there is no direct correspondence to the properties for \textit{backtrackable state} shown in Tang and Schrijvers paper, an anology with the \lstinline{fail} operation $\varnothing$ can be drawn. The identities below show how state is lost after failure: 
 
 \[
 \textbf{put-right-identity}: \quad \texttt{put}\;s \gg \varnothing = \varnothing
@@ -1490,15 +1440,13 @@ The placement of the state handler inside the nondeterminism handler ensures tha
 \textbf{get-right-identity}: \quad \texttt{get}\; \gg \varnothing = \varnothing
 \]
 
-Our return clause  simply returns a value and does not resume the continuation thereby losing all variable bindings and associated state. Since in local state semantics each nondeterministic branch is evaluated with its own copy of the state, any equation that holds in the pure state setting continues to hold per branch.
+The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually and when a computation returns, its state is no longer stored. The return clause  simply returns a value and does not resume the continuation, thereby losing all variable bindings and its associated state. 
+
+\vspace{1em}
+\large{\textbf{Proof of Idempotence of return and local state}}
 
 
 
-\begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.554}]
-Memory mappings that were created in the process shall be unmapped before the process
- is destroyed.
- \end{tcolorbox}
- 
 
 \begin{longtable}{@{}l@{}}
 \textbf{with } nondet handle \\
@@ -1530,11 +1478,13 @@ Memory mappings that were created in the process shall be unmapped before the pr
 \end{longtable}
 
 
-\subsubsection{State Inheritance:} When a process is forked, the child receives a snapshot of the parent’s state at that moment. This fork-time duplication ensures that both processes start from identical conditions, but proceed independently.
-
+\subsubsection{State Inheritance} 
 \begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.897}]
 Memory mappings created in the parent shall be retained in the child process
 \end{tcolorbox}
+
+When a process forks, the child receives a snapshot of the parent’s state at that moment. This fork-time duplication ensures that both processes start from identical conditions, but proceed independently.
+
 
 
 
@@ -1877,7 +1827,7 @@ we can provide partial ordering guarantees about write safety whilst still allow
 
 Reasoning about the scheduler is very difficult because it introduces non-determinism into our system. Unlike the algebraic effects, which have clear equational rules, the behaviour of the scheduler depends on the runtime state of the process queue and the particular order in which processes are resumed. 
 
-Unfortunately reasoning about the scheduler has long been difficult to reason about \cite{}. As noted in \textit{The Logic and Handling of Algebraic Effects}, recursive definitions over both parameters are not primitively recursive.
+Unfortunately reasoning about the scheduler has long been difficult to reason about \cite{}. As noted in \textit{The Logic and Handling of Algebraic Effects}, recursive definitions over both parameters are not primitively recursive. There is no clear "smaller" structure to descend into as neither parameter is fixed while the other reduces. This breaks traditional inductive reasoning and requires more complex mutual or nested inductions, which are notoriously difficult to manage algebraically.
 
 
 
