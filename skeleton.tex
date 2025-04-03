@@ -1390,7 +1390,7 @@ Much work has been done to describe the properties that arise from the compositi
 
 I now describe the properties of global and local state as defined in the latest version of the \textit{Open Group Unix Specifications} \cite{posix}. My goal here is to show how these behaviours are captured within my effect handler model. I will contrast my implementation with conventional imperative approaches, typically used to implement similar functionality in Unix-like systems. 
 
-\subsection{Local State: Unix Specifications}
+\subsection{Unix Specifications: Local State}
 
 In this context, the term \textit{local state} refers to state that is scoped to a single process and is not observable to or accessible by any other process in the system. Examples include process-local variables, file descriptor tables, and other private data that do not persist across process boundaries. 
 
@@ -1443,8 +1443,9 @@ The specification above advises that a process's local state should be lost when
 The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually and when a computation returns, its state is no longer stored. The return clause  simply returns a value and does not resume the continuation, thereby losing all variable bindings and its associated state. 
 
 \vspace{1em}
-\large{\textbf{Proof of Idempotence of return and local state}}
+{\large{\textbf{Proof of Idempotence of return and local state}}}
 
+\normalsize
 
 
 
@@ -1482,80 +1483,21 @@ The placement of the state handler inside the nondeterminism handler ensures tha
 \begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.897}]
 Memory mappings created in the parent shall be retained in the child process
 \end{tcolorbox}
+The specification above advises that when a process forks the state in the parent should be copied for the child. This ensures that both processes start from an identical state from which they may then proceed independently.
 
-When a process forks, the child receives a snapshot of the parent’s state at that moment. This fork-time duplication ensures that both processes start from identical conditions, but proceed independently.
-
-
-
-
-Tang and Schrijvers \cite{tang2025high} also state that the local state Monad displays the following two properties:
-
-\vspace{-1em}
-\[
-\textbf{put-left-distributivity:} \quad
-\texttt{put } s \gg (m_1 \sqcup m_2) = (\texttt{put } s \gg m_1) \sqcup (\texttt{put } s \gg m_2)
-\]
-\vspace{-1em}
-\[
-\textbf{get-left-distributivity:} \quad
-\texttt{get} \gg= (\lambda x.\, k_1\, x \sqcup k_2\, x) = (\texttt{get} \gg= k_1) \sqcup (\texttt{get} \gg= k_2) 
-\]
-
-Having these right distributivity properties show us how state is inherited from parent to child.
+Tang and Schrijvers \cite{tang2025high} show how their \textit{backtrackable state} Monad displays state distribution across nondeterministic choice:
 
 
+\begin{figure}[H]  % Use [H] to force exact placement, or [htbp] for flexible
+  \centering
+  \includegraphics[width=1\textwidth]{distributivity.png}  % Adjust width & filename
+  
+\end{figure}
 
-\textcolor{red}{show get;return x=  x and set(a); return x = x}
-
-
-
-\begin{tcolorbox}[examplebox, title=Practical Example: Inheriting environment variables]
-
-
-\begin{lstlisting}
-sessionmgr(Root, {
-  if Fork() then {
-    su(Alice);
-    whoami();      // prints "Alice"
-  } else {
-    whoami();      // prints "Root"
-})});
-...
-\end{lstlisting}
-\[
-\begin{array}{l}
-\textbf{with } \text{nondet} \textbf{ handle } \\
-\quad \textbf{with } \text{sessionmgr(Root)} \textbf{ handle } \\
-\quad\quad \text{Fork}()(r. \textbf{if } r \textbf{ then } (su(Alice); \textit{whoami}()) \textbf{ else } \textit{whoami}()) \\[5pt]
-\quad\equiv\quad (12) \\
-\end{array}
-\]
-
-\begin{longtable}{@{}l@{}}
-\textbf{with } nondet \textbf{ handle } Fork()(r. \textbf{with } sessionmgr \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); \\ whoami()) \textbf{ else } whoami())) \\
-
-\quad$\equiv$\quad (11) \textit{The state handler is applied outside, so all branches share the same initial state.} \\
-\textbf{resume } True ++ \textbf{resume } False \\
-\quad [ ()/x,\ \textbf{fun } r $\rightarrow$ \textbf{with } sessionmgr \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); whoami()) \textbf{ else } whoami()) / k ] \\
-
-\quad$\equiv$\quad (subst) \\
-\textbf{fun } r $\rightarrow$ \textbf{with } sessionmgr(Root) \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); whoami()) \textbf{ else } whoami())\ True \\
-++ \\
-\textbf{fun } r $\rightarrow$ \textbf{with } sessionmgr(Root) \textbf{ handle } (\textbf{if } r \textbf{ then } (su(Alice); whoami()) \textbf{ else } whoami())\ False \\
-
-\quad$\equiv$\quad (8) \\
-\textbf{with } sessionmgr \textbf{ handle } (su(Alice); whoami()) \\
-++ \\
-\textbf{with } sessionmgr(Root) \textbf{ handle } whoami() \\
-
-\quad$\equiv$\quad (11) \\
-\textbf{env}(x, k)\ [\text{``Alice''}/x,\ \textbf{fun } y $\rightarrow$ \textbf{with } sessionmgr \textbf{ handle } whoami()/k] \\
-++ \\
-z $\leftarrow$ \textbf{do Ask()} \ [()/x,\ \textbf{fun } z $\rightarrow$ \textbf{with } env \textbf{ handle } C/k] \\
-\end{longtable}
+In line with the above properties, I can demonstrate that my handlers allow state operations to distribute over forking, following the inheritance functionality prescribed in the Unix specification. 
 
 
-\end{tcolorbox}
+{\large{\textbf{Proof - \textit{Get} Distributing Over \textit{Fork}}}}
 
 
 
@@ -1563,30 +1505,7 @@ z $\leftarrow$ \textbf{do Ask()} \ [()/x,\ \textbf{fun } z $\rightarrow$ \textbf
 
 
 
-
-\subsection{Global State : Unix Specifications}
-
-\textcolor{red}{As global state, we are referring to memory or system resources that are shared across all processes and remain accessible regardless of process boundaries. Examples include the file system, shared memory mappings, or other kernel-managed structures that persist independently of any single process. This state is visible to and modifiable by all concurrently running processes, meaning changes made in one process can influence the behaviour or outcomes of others.
-}
-
-\textcolor{red}{
-Global state lacks many of the algebraic properties we observed in the local case. Algebraic effect systems describe the structure of programs, but not the sequence in which operations occur. As local state is indepenent and commutative this didn't matter, but in global state this leads to the race conditions described earlier \cite{raceConditionRef}
-}
-
-\textcolor{red}{Our algebra defines which operations are performed and how they are composed structurally, but they don't have a notion of time/order and so don't describe operational runtime behaviour. We rely on external ordering mechanisms such as scheduling and mutexes to define how these are actually executed.
-}
-
-\textcolor{red}{Some models discuss the put-or law. This law is valid in an operational model where state updates are evaluated from left to right}
-
-\[
-\textbf{put-or:} \quad (put\ s \gg m) \oplus n = put\ s \gg (m \oplus n) 
-\]
-
-
-\textcolor{red}{Global state cannot be described as a monad in this setting, because it lacks a coherent distributive interaction with nondeterminism. The absence of this law means that basic monadic composition, such as associativity and bind chaining}
-
-The Unix specifications note this problem and delegates the problem to the application level. We talk about these process synchronisation methods later in this chapter.
-
+\subsection{Unix Specifications: Global State }
 
 \begin{tcolorbox}[colback=gray!10, colframe=gray!60, sharp corners, boxrule=0.5pt, title={POSIX Base Specifications, Issue 7, p.2316}]
  This volume of POSIX.1-2008 does not specify the behaviour of concurrent writes to a regular file |
@@ -1594,8 +1513,26 @@ The Unix specifications note this problem and delegates the problem to the appli
  Applications should use some form of concurrency control.
 \end{tcolorbox}
 
-We illustrate how this non-deterministic behaviour arises by reasoning through handler scope and equational equivalence.
+The term \textit{global state} refers to any memory or system resources that are shared across processes and includes the file system and other kernel-managed structures that persist independently of any single process. Since \textit{state} is potentially modifiable by other concurrently running processes, a change made in one process can affect the behaviour of others. The Unix specifications acknowledges this concurrency problem and deals with it by delegating it to the application level. A topic that will be discussed in more detail later in this chapter.
 
+Since execution ordering depends on the dynamic runtime state of the scheduler, algebraic reasoning about global state, it is inapplicable in this scenario. 
+
+Tang and Schrijvers also encounter this problem when trying to represent global state using monads. They point out that while global state and nondeterminism can each be given a monadic structure, their composition cannot be modelled as a monad in the usual way. The problem is that state updates persist across nondeterministic branches, which breaks two of the key monad laws, associativity and identity. The composition of \textit{nondeterminism} and \textit{state} fails to maintain the property of right-distributivity of \textit{nondeterminism}.
+
+
+Tang and Schrijver's describe one possible global state law,  the \textit{put-or} law. This law is valid in an \textcolor{red}{operational model} where state updates are evaluated from left to right.
+
+\[
+\textbf{put-or:} \quad (put\ s \gg m) \oplus n = put\ s \gg (m \oplus n) 
+\]
+
+However, this another example of the equational theory being too strong to hold in a practical implementation: in Unix systems, the order in which a scheduler's policy will run the processes cannot be assumed.
+
+
+The limits of algebraic reasoning for global state evaluation are shown below. In this example a computation is evaluated until it can not be evaluated any further, because after this point the scheduler must determine the execution order.
+
+\vspace{1em}
+{\large \textbf{Example of Global State Evaluation}}
 \begin{longtable}{@{}l@{}}
 \textbf{with } state \textbf{ handle} \\
 \quad \textbf{with } nondet \textbf{ handle} \\
@@ -1632,7 +1569,7 @@ We illustrate how this non-deterministic behaviour arises by reasoning through h
 \end{longtable}
 
 
-This creates a non deterministic outcome, as we can see from the example above, the order in which the scheduler chooses to run these branches will affect the final state of the system. To each process the system is nondeterministic as it doesn't know what state the system will be in when it is run. 
+It will be seen that this creates a nondeterministic outcome, as the order in which the scheduler chooses to run these branches will affect the final state of the system. 
 
 
 
