@@ -29,18 +29,14 @@
 }
 
 \newcommand{\equivalenceStatement}[4]{
-\begin{flushleft}
 \[
-\begin{aligned}
-    &\text{\textbf{with} } #1 \text{ \textbf{handle}} \\
-    &\quad \text{#2} \\
-    &\equiv \\
-    &\text{\textbf{with} } #3 \text{ \textbf{handle}} \\
-    &\quad \text{#4}
-\end{aligned}
+\begin{array}{rcl}
+\text{\textbf{with} } #1 \text{ \textbf{handle}} & \equiv & \text{\textbf{with} } #3 \text{ \textbf{handle}} \\
+\quad \text{#2} & & \quad \text{#4}
+\end{array}
 \]
-\end{flushleft}
 }
+
 
 
 \newcommand{\with}{

@@ -103,21 +103,21 @@
 Most imperative programming languages do not provide a structured facility for handling effects, and functional approaches such as Monads lead to poor modularity and composability issues \cite{jones1993composing}. 
 
 
-Recently, Algebraic effect handlers have emerged as a flexible, first-class mechanism to define and interpret effects dynamically. This approach provides a structured and modular way to reason about computational effects, such as exceptions, state, and concurrency, and is particularly useful in modelling complex control flows, providing an effective method for addressing several of the key challenges involved in implementing a Unix-like system.
+Recently, algebraic effect and their handlers have emerged as a flexible, first-class mechanism to define and interpret effects dynamically. This approach provides a structured and modular way to reason about computational effects such as exceptions, state, and concurrency, and is particularly useful in modelling complex control flows. This provides an effective method for addressing several of the key challenges involved in implementing a Unix-like system.
  \cite{ritchie1974unix}. 
 
 
-Unix was first developed in the 1970s at Bell Labs \cite{ritchie1984unix} to provide a new approach to operating system design. Prior to this, operating systems were typically monolithic and hardware specific. Unix was designed to be a small, portable and multi-user operating system, which emphasised simplicity, modularity and composability. Its key innovations were: 
+Unix was first developed in the 1970s at Bell Labs \cite{ritchie1984unix} to provide a new approach to operating system design. Prior to this, operating systems were typically monolithic and hardware specific. It was designed to be a small, portable and multi-user operating system, which emphasised simplicity, modularity and composability. Its key innovations were: 
 
 \begin{itemize}
-    \item Everything is treated as a file – a unified approach that simplifies interaction with devices, processes, and data. 
+    \item Everything is treated as a file – a unified approach that simplifies interaction with devices, processes, and sockets. 
     \item Pipes and redirection - enable seamless composition of commands into larger programs.
     \item Simplified interface - offers a minimal set of system calls, ensuring a consistent approach to process management, file handling, and I/O.
 \end{itemize}
 
 This dissertation consists of two parts. In the first part I implement the "Tiny Unix" system described in Hillerström’s \textit{Foundations for Programming and Implementing Effect Handlers} \cite{hillerstrom_foundations_nodate}. Written in the Koka programming language, this implementation provides a modular and composable approach to Unix functionality. 
 
-In the second part, I apply algebraic equivalence rules from Pretnar’s \textit{An Introduction to Algebraic Effects and Handlers} \cite{pretnar_introduction_2015} to analyse the implementation. By leveraging these rules, we can evaluate its properties and compare it to standard Unix implementations. Since certain algebraic standard effects have associated equational theories, we are also able to verify that our implementation adheres to these theoretical foundations.
+In the second part, I apply algebraic equivalence rules from Pretnar’s \textit{An Introduction to Algebraic Effects and Handlers} \cite{pretnar_introduction_2015} to analyse the implementation. By leveraging these rules, we can evaluate its properties and compare it to standard Unix implementations. Since certain standard algebraic effects have associated equational theories, I am also able to verify that my implementation adheres to these theoretical foundations.
 }
 
 \maketitle
@@ -136,7 +136,7 @@ from the Informatics Research Ethics committee.
 
 
 \begin{acknowledgements}
-I would like to express my sincere thanks to Dr. Sam Lindley for his helpful suggestions, insightful feedback, and valuable input throughout the development of this dissertation. His guidance has been greatly appreciated. I would also like to thank Jesse Sigal for his support and for generously sharing his knowledge and time, which were both immensely helpful during my research.
+I would like to express my sincere thanks to Dr Sam Lindley for his helpful suggestions, insightful feedback, and valuable input throughout the development of this dissertation. His guidance has been greatly appreciated. I would also like to thank Jesse Sigal for his support and for generously sharing his knowledge and time, which were both immensely helpful.
 \end{acknowledgements}
 
 
@@ -146,67 +146,61 @@ I would like to express my sincere thanks to Dr. Sam Lindley for his helpful sug
 
 \chapter{Introduction}
 \section{Motivation}
-Effect handlers are increasingly being explored as a way to manage computational effects in programming. Unix provides a useful model for exploring their application, as its abstract system calls serve as an interface for programs to interact with the OS, similarly to how effects provide an interface for programs to cause side effects. 
+Effect handlers \textcolor{red}{ref} are increasingly being explored as a way to manage computational effects in programming. Unix provides a useful model for exploring their application, as its abstract system calls serve as an interface for programs to interact with the OS, similarly to how effects provide an interface for programs to cause side effects. 
 
-In this project, we implement these system calls using effect handlers, representing each as an algebraic effect to achieve a concise and modular design. Effect handlers offer a simple and principled way to model Unix’s complex state and control flow challenges, while also enabling formal reasoning about our solutions. I will demonstrate how effect handlers support composable implementations and enhance our ability to reason about intricate control flows, one of their key advantages.
-Key motivations and observations include:
-\begin{itemize}
-    \item \textcolor{red}{Unix’s abstract system calls resemble the concept of effect handlers, in that both represent abstract effectful operations whose implementations can vary depending on context.}
-    \item \textcolor{red}{Modelling Unix introduces complex control and scoping issues, which can be handled more naturally in effect-oriented languages compared to imperative approaches. }
-\end{itemize}
-
+In this project, I implement these system calls using effect handlers, representing each as an algebraic effect to achieve a concise and modular design. Effect handlers offer a simple and principled way to model Unix’s complex state and control flow challenges, while also enabling formal reasoning about their implementations. I will demonstrate how effect handlers support composable implementations and enhance our ability to reason about intricate control flows, one of their key advantages.
 
 \section{Aims}
-This dissertation aims to:
+In this dissertation I aim to:
 \begin{itemize}
     \item Outline the theory behind effect handler-oriented programming and provide relevant background on the Unix system, explaining the suitability in using effect handlers to model Unix.
-    \item Implement the "Tiny Unix" system in Koka as described in Hillerström's thesis \cite{hillerstrom_foundations_nodate}.
-    \item Apply algebraic reasoning techniques to verify that our implementation meets the required Unix specifications. 
-    \item Reflect on the effectiveness of using these formal techniques.
+    \item Implement the \textit{Tiny Unix} system in Koka as described in Hillerström's thesis \textit{Foundations for Programming and Implementing Effect Handlers}\cite{hillerstrom_foundations_nodate}.
+    \item Apply algebraic reasoning techniques to verify that my implementation meets the required Unix specifications. 
+    \item Reflect on the effectiveness of modelling \textit{Tiny Unix} using  effect handlers and my subsequent verification of its correct implementation using algebraic equivalences.
     
 \end{itemize}
 
 \section{Outline}
 
-\textbf{Chapter 2} introduces the background and research surrounding effect handlers. It provides a brief overview of the Unix system and explains why it serves as an interesting model to implement using effect handlers. The chapter also explores how effects give rise to computational trees, enabling modular reasoning about code.
+Chapter 2 introduces the background and research surrounding effect handlers. It provides a brief overview of the Unix system and explains why it serves as an interesting model to implement using effect handlers. The chapter also explores how effects give rise to computational trees, enabling modular reasoning about code.
 
-\textbf{Chapter 3} outlines the implementation of the "Tiny Unix" system, as described abstractly in Hillerström's PhD thesis, using the Koka language. It discusses the advantages of modelling certain control flow and scoping issues with effect handlers, as well as the challenges encountered during implementation.
+Chapter 3 outlines the implementation of the \textit{Tiny Unix} system, as described abstractly by Hillerström, using the Koka programming language. I discuss the advantages of modelling certain control flow and scoping issues with effect handlers, as well as the challenges encountered during implementation.
 
-\textbf{Chapter 4} focuses on reasoning about the “Tiny Unix” implementation. It examines attempts to verify the correctness of features such as environment variables, the file system, nondeterminism, and process synchronisation using algebraic reasoning techniques.
+Chapter 4 focuses on reasoning about the \textit{Tiny Unix} implementation. I attempt to verify the correctness of features such as environment variables, the file system, nondeterminism, and process synchronisation using algebraic reasoning techniques.
 
-\textbf{Chapter 5} presents the conclusions drawn from this project. It reflects on the difficulties of reasoning formally about effectful programs, the lessons learned, and suggests areas where these reasoning techniques might be more effectively applied in future work.
+Chapter 5 presents the conclusions drawn from this project. I reflect on the difficulties posed by reasoning formally about effectful programs, the lessons learned, and suggest areas where these reasoning techniques might be more effectively applied in future work.
 
 
 \chapter{Background}
 
 \section{Algebraic Effects}
 
-Algebraic effects \cite{plotkin_handling_2013} and their handlers \cite{pretnar_introduction_2015} provide a structured approach to managing computational side effects, explicitly denoting effectful computations and handling them non-locally.
-
-Algebraic effects are handled by \textit{effect handlers}, which provide an interpretation for these effects.
+Algebraic effects \cite{plotkin_handling_2013} and their handlers \cite{pretnar_introduction_2015} provide a structured approach to managing computational side effects, explicitly denoting effectful computations and handling them non-locally. Algebraic effects are handled by \textit{effect handlers}, which provide an interpretation for these effects.
 
 \subsection{Effect Signatures}
-In an algebraic effect system, effects are described by signatures, which define a collection of named operations that the effect supports. Each operation has a type signature that specifies the arguments it takes and the type of result it returns.
+In an algebraic effect system, an effect is described by its \textit{effect signature}. This defines a collection of named operations that the effect supports. Each operation has a type signature that specifies the arguments it takes and the type of value it returns.
 
-Take the classic example \texttt{State}. This effect models mutable state, and its signature typically includes two operations:
-\begin{itemize}
-    \item \texttt{Read(fileName : String) : String}
-    \item \texttt{Write(fileName : String, contents : String) : Unit}
-\end{itemize}
+Consider for example, the \texttt{State} effect. It  models mutable state, and its effect signature typically includes two operations, \texttt{get} and \texttt{put}:
 
+\[
+\textbf{State} := \left\{
+\mathsf{get} : 1 \rightsquigarrow S, \quad
+\mathsf{put} : S \rightsquigarrow 1
+\right\}
+\]
 
+An effect signature serves as an abstract interface for effectful operations. When a program invokes such an operation, it signals a request, without enforcing the way in which the operation is implemented. The semantics are supplied externally by a handler.
 
-An effect signature serves as an abstract interface for effectful operations. When a program invokes such an operation, it signals a request, without enforcing how the operation is implemented. The semantics are supplied externally by a handler.
+Effects are tracked in the \textit{type system}: any function that performs an effect must either handle it locally or declare it in its type signature. Unhandled effects propagate outwards through the call stack, altering the types of all enclosing functions, until they are eventually handled. This is similar to the way in which unhandled exceptions are treated.
 
-Effects are tracked in the \textit{type system}: any function that performs an effect must either handle it locally or declare it in its type. If unhandled, the effect propagates outward, affecting the type signatures of all enclosing functions until it is eventually interpreted. Unhandled effects bubble up the call stack until they are caught by an appropriate exception handler, in much the same way as unhandled exceptions do.
 
 \subsection{Effect Scoping}
-Effect handlers allow us to define multiple different handlers for the same effect, each providing a different interpretation. The way the effect is handled depends on the first relevant effect handler which is in scope. This enables dynamic scoping, where the runtime searches outward through enclosing handler scopes to find the first relevant handler for that effect. As a result, the same operation may be interpreted differently depending on the context in which it is used. This approach enables flexible and modular code, with the same effectful code being reused across contexts with different interpretations supplied by handlers.
+Effect handlers allow us to define multiple different handlers for the same effect, each providing a different interpretation. The way the effect is handled is determined by the interpretation provided by nearest enclosing effect handler that matches the operation. This allows for dynamic scoping, where the nearest enclosing handler is resolved at runtime to interpret the effect. As a result, the same operation may be interpreted differently depending on the context in which it is used. By decoupling effectful operations from their interpretations, this approach allows the same code to behave differently depending on the handler context, supporting modular and reusable design.
 
-\textcolor{red}{This is stronger than traditional abstraction: it's inversion of control, where the interpretation is not just abstracted but externally injected.}
 
-\subsection{Capturing Continuations via Resumptions}
-One of the defining features that makes effect handlers particularly powerful is their ability to manipulate resumptions. When an effect operation is handled, the handler receives not only the operation’s arguments but also a continuation, also known as a \textit{resumption}, which represents the rest of the computation still to be executed. The handler may resume the computation one or multiple times, or even discard it entirely. This fine-grained control allows for the expression of advanced control patterns such as backtracking, coroutines, cooperative multitasking, and early exits in a modular and concise way.
+
+\subsection{Capturing Continuations as Resumptions}
+One of the defining features that makes effect handlers particularly powerful is their ability to manipulate \textit{resumptions}. When an effect operation is handled, the handler receives not only the operation’s arguments but also a delimited continuation, known as a \textit{resumption}. A resumption represents the remainder of the computation. The handler may resume the computation one or multiple times, or even discard it entirely. This fine-grained control allows for the expression of advanced control patterns (e.g. backtracking, coroutines, cooperative multitasking, and early exits) in a modular and concise way.
 
 \subsection{Benefits to Software Structure}
 
@@ -216,7 +210,7 @@ For example, consider logging data accesses in a database. Typically, logging lo
 
 In languages like Java, chaining effectful operations can obscure where effects occur and how errors are handled, making it difficult to reason about the interactions between operations. Effect handlers address this issue, making them particularly useful for implementing side effects such as asynchronous operations, state management, logging, and exception handling. 
 
-\subsection{Comparison to other Functional Approaches to Side Effects}
+\subsection{Comparison with other Structured Approaches to Side Effects}
 In the context of functional programming, effect handlers provide a simple and lightweight method for managing side effects. They serve as a viable alternative to monads, offering a more flexible approach. Unlike monads, which can become rigid once defined, effect handlers allow for greater modification. Additionally, they simplify the combination of multiple side effects, avoiding the complexity of monad transformers. In some cases, effect handlers also offer better performance by eliminating the overhead of repeatedly wrapping and unwrapping values within monadic structures. 
 
 
@@ -318,26 +312,26 @@ However, the most relevant for this dissertation is \textit{Not by equations alo
 
 
 \chapter{Unix Implementation}
-Having described the theoretical benefits of effect handlers in the previous chapter, we now show the practical implementation of the "Tiny Unix" system, written by Hillerström, in the Koka programming language. 
+Having described the theoretical benefits of effect handlers in the previous chapter, I now demonstrate, in the Koka programming language, a practical implementation of the \textit{Tiny Unix} system, written in pseudo-language by Hillerström. 
 
-The features we implement serve as good examples of problems that are difficult to model in traditional programming paradigms. These include problems concerning dynamic scoping, global state, control flow interruptions, and reasoning about suspended computations.
+The features I implement serve as good examples of problems that are difficult to model in traditional programming paradigms. These include problems concerning dynamic scoping, global state, control flow interruptions, and reasoning about suspended computations.
 
-We will show how Koka allows us to implement each effect independently and then compose them together to express this behaviour cleanly and concisely.
-In his thesis, Hillerström uses a pseudo-lambda calculus that can switch between deep and shallow handlers. Koka primarily uses deep handlers, enabling us to implement each effect independently, expressing complex behaviour in a clean and concise manner.
+I will first show how Koka allows each system call to be implemented independently as an effect. I will then compose them together to express system behaviour cleanly and concisely.
+In his thesis, Hillerström uses a pseudo-lambda calculus that can switch between deep and shallow handlers. Koka primarily uses deep handlers, enabling us to express complex behaviour succinctly.
 
 
 
 \section{Process Status}
-In Unix, processes provide an exit code upon termination. A return code of 0 signifies successful execution, while any non-zero value indicates an error. 
+In Unix, processes provide an exit code upon termination. A return code of \lstinline{0} signifies successful execution, while any non-zero value indicates an error. 
 
-We begin by defining the exit effect, which includes a single exit operation parameterised by an integer:
+I begin by defining the \textit{exit} effect, which includes a single exit operation parameterised by an integer:
 \begin{lstlisting}
 effect exit
   ctl exit(n : int) : a
 \end{lstlisting}
 
 \vspace{1em}
-We can now write the exit handler. It can be seen that the function's signature expects the parameter action as a paused computation, which produces an exit effect.
+I can now write the exit handler. It will be seen that the function's signature expects the parameter \lstinline{action} as a paused computation, which produces an exit effect.
 
 \begin{lstlisting}
 fun status(action : () -> <exit|e> a) : e int
@@ -345,17 +339,17 @@ fun status(action : () -> <exit|e> a) : e int
         action()
         0
 \end{lstlisting}
-In Hillerström’s language, it was necessary to introduce an absurd function to coerce the valueless return into a form that made sense within the language’s type system. In contrast, Koka allows us to return a value directly without requiring a resumption. In cases where a function returns without explicitly calling exit(n), we assume it has exited successfully and simply return 0.
+In Hillerström’s language, an \textit{absurd} function was required to convert a computation with no meaningful return value into a form that was compatible with the type system. In contrast, in Koka we can return value directly without requiring a resumption. In cases where a computation never calls \lstinline{exit(n)}, we assume it has exited successfully and simply return 0.
 
 \section{Basic IO}
-Hillerström first models a simplified form of state. From the effect signature, we can see that writes can be labelled with a file descriptor. However, in our implementation, we defer this functionality until later. Initially, we treat all writes as if they are directed to the same output stream, which we conceptualise as stdout, regardless of the specified file descriptor.
+Hillerström first models a simplified form of state. From the effect signature, it can be seen that writes can be labelled with a file descriptor. However, in my implementation, I defer this functionality until later. Initially, we treat all writes as if they are directed to the same output stream, which can be conceptualised as \textit{stdout}, regardless of the specified file descriptor.
 
 \begin{lstlisting}
 effect bio
     fun writeBio( fd : filedesc, s : string ) : ()
 \end{lstlisting}
 \vspace{1em}
-Here we define the handler:
+Below I define the handler:
 
 \begin{lstlisting}
 fun bio( action : () -> <bio|e> a ) : e (a,string)
@@ -366,17 +360,17 @@ fun bio( action : () -> <bio|e> a ) : e (a,string)
   action()
 \end{lstlisting}
 
-Note that, unlike in Hillerström’s implementation, we do not require explicit \lstinline{resume} keywords. In Koka, effects of type \lstinline{fun} perform the effective operation and then continue execution immediately.
+Note that unlike Hillerström’s implementation, I do not require the explicit \lstinline{resume} keyword. In Koka, effects of type \lstinline{fun} perform the effective operation and then continue execution immediately.
 
 \section{Users and Environment Variables}
-Environment variables are key-value pairs stored in the environment of a process. In this implementation, provide an example by storing the current user's name as an environment variable.
+\textit{Environment variables} are key-value pairs stored within process's execution environment. In this implementation, Hillerström provides an example by storing the current user's name as an environment variable.
 
-We define users as a \lstinline{sum} type:
+He defines users as a \lstinline{sum} type, which is implemented in Koka as:
 \begin{lstlisting}
 type user = Root, Alice, Bob
 \end{lstlisting}
 
-We define two effects: \lstinline{su}, which is parameterised by the user to switch to, and \lstinline{whoami()}, which returns the current user as a string.
+He defines define two effects: \lstinline{su}, which is parameterised by the user to switch to, and \lstinline{whoami}, which returns the current user name as a string:
 
 \begin{lstlisting}
 effect su
@@ -397,7 +391,7 @@ fun env( user : user, action : () -> <whoami|e> a ) : e a
   action()
 \end{lstlisting}
 
-Next, we define separate handlers for the \lstinline{su} and \lstinline{whoami()} effects:
+Here handlers are defined for the \lstinline{su} and \lstinline{whoami} effects:
 \begin{lstlisting}
 fun session-mgr( initial-user : user, action : () -> <su,whoami|e> a ) : e a
   with env(initial-user)
@@ -415,16 +409,18 @@ fun env( user : user, action : () -> <whoami|e> a ) : e a
       Bob   -> "bob"
   action()
 \end{lstlisting}
+The \lstinline{session_mgr} handler manages \lstinline{su(user')} operations by rewrapping the continuation in a new \lstinline{env} handler, parameterised by the new user \lstinline{user'}. This method offers greater modularity compared to global variables because it fully encapsulates state within the effect handler itself. This is an example of dynamic scoping, a technique that will be especially useful in the next section, which deals with \textit{process forking}.
 
-The \lstinline{env} handler is parameterised by the current user, enabling it to handle \lstinline{whoami()} operations by returning this user's identity.
+The \lstinline{env} handler is parameterised with the session's current user, enabling it to handle \lstinline{whoami} operations by returning this user's identity as string.
 
-\lstinline{session_mgr} manages user switches by rewrapping the continuation in a new \lstinline{env} handler, parameterised by the new user. This method offers greater modularity compared to global variables because it fully encapsulates state within the effect handler itself. This is an example of dynamic scoping, a technique that will be especially useful in the next section, which deals with process forking.
 
 \section{Multi-Process System}
 \subsection{Forking}
-A forking operation creates a new computational thread that continues independently from the original. Hillerström describes how forking introduces nondeterminism into a system.  From the perspective of each process in the system, it is unclear which order the processes will execute, as this is managed by the operating system's scheduling policy. 
+A \textit{forking operation} creates a separate computational branch (representing a new process) that continues independently from the original. Hillerström describes how forking introduces \textit{nondeterminism} into the system.  From the viewpoint of any individual process, the execution order of other processes is unpredictable, as it is determined by the operating system’s scheduling policy, hence the nondeterminism.
 
-It will be seen that the fork operation returns boolean:
+ 
+
+The \lstinline{fork} operation returns a boolean
 \begin{lstlisting}
 effect fork
   ctl fork() : bool     
@@ -439,12 +435,9 @@ fun forking( action : () -> <fork|e> a ) : e list<a>
   action()
 \end{lstlisting}
 
-It will be seen that the forking handler introduces two resumptions, splitting computation into two paths. The resumption parameterised with \lstinline{True} represents the parent process and the resumption with \lstinline{False} represents the child process. Resumptions are returned as a list which can be used by the scheduler. 
+and it will be seen that the forking handler introduces two resumptions, splitting the computation into two paths. The resumption parameterised with \lstinline{True} represents the parent process and the resumption with parameterised with \lstinline{False} represents the child process. These resumptions are returned in a list which is used by the scheduler. 
 
-The \lstinline{fork} operation is used in code structures such as:
-\vspace{-1em}
-\begin{figure}[H]
-    \centering
+A \lstinline{fork} operation is used in code structures such as:
     \begin{lstlisting}
     if fork() {
         // ... parent specific code
@@ -453,21 +446,20 @@ The \lstinline{fork} operation is used in code structures such as:
         /// ... child specific code
     }
     \end{lstlisting}
-    \caption{Example of control flow branching via \texttt{fork()}, where the parent and child execute different code paths.}
-\end{figure}
 
+It will be seen that the resumption parameterised with \lstinline{True} will execute the parent specific code, whilst the resumption parameterised with \lstinline{False} will execute the child specific code.
 
 \subsection{Scheduling}
-Forking gives us the capability to spawn new processes, which our handler returns as a list of paused processes. A scheduling algorithm must be implemented to interleave the running of these processes.
+Forking gives us the ability to spawn new processes, which our forking handler returns as a list of resumptions. A scheduling algorithm must be implemented to interleave the running of these processes.
 
-We must first differentiate between a process that has finished and one which has just temporarily paused. We introduce a data type, \lstinline{pstate}, to represent these two states.
+We must first differentiate between a process that has finished and one which has just temporarily paused. We introduce the data type, \lstinline{pstate}, to represent these two states.
 \begin{lstlisting}
 type pstate<e,a>
   Done(result : a)
   Paused(resumption : () -> e pstate<e,a> )
 \end{lstlisting}
 
-Currently, there is no way for a process to indicate it is ready to pause; once it has started, it will execute until it finishes. So we introduce an effect called \lstinline{interrupt} and its effect handler \lstinline{reify-process} as a way of yielding control to the scheduler allowing the interleaving of processes.
+Currently, there is no way for a process to indicate it is ready to pause; once it has started, it will execute until it finishes. So we introduce an effect called \lstinline{interrupt} and its effect handler \lstinline{reify-process} as a way of yielding control to the scheduler, allowing the interleaving of processes.
 
 \begin{lstlisting}
 effect interrupt
@@ -479,7 +471,9 @@ fun reify-process(action : () -> <interrupt|e> a) : e pstate<e,a>
     ctl interrupt() -> Paused(fn() resume(()))
   action()
 \end{lstlisting}
-A co-operative concurrency model has been implemented, meaning that interrupts must be done manually by the programmer. Finally, a scheduler is introduced to coordinate the running of the processes: 
+Hillerström opted for a co-operative concurrency model, meaning that interrupts must be done manually by the programmer. 
+
+Finally, a scheduler is introduced to coordinate the running of the processes: 
 \begin{lstlisting}
 fun scheduler( pstates : list<pstate<<fork,div|e>,a>> ) : <div|e> list<a>
   fun schedule( paused : list<pstate<<fork,div|e>,a>>, done : list<a> ) : <div|e> list<a>
@@ -495,17 +489,17 @@ fun timeshare( action : () -> <fork,interrupt,div|e> a ) : <div|e> list<a>
   val p = Paused( fn() reify-process(action) )
   scheduler([p])
 \end{lstlisting}
-This scheduler maintains two lists of processes; one containing paused processes, the other containing finished processes, and works recursively. It runs the first process in the paused list until it reaches an interrupt. It then runs the scheduler again, with this process added to the end of the paused queue. When a process finishes, it is added to the \lstinline{done} queue. This procedure is then repeated until there are no processes left in the \lstinline{paused} queue.
+This scheduler manages two lists of processes, one containing paused processes, the other containing finished processes, and works recursively. It runs the first process in the paused list until yields control with an \lstinline{interrupt}. The scheduler then reruns itself, with this process sent to the end of the paused queue. When a process successfully terminates, it is moved to the \lstinline{done} queue. This procedure is repeated until there are no processes left in the \lstinline{paused} queue.
 
 \section{Serial File System}
-In this section, we implement a more realistic version of the file system implemented earlier. A Unix file system is implemented on top of an array of bytes. Unix structures this medium into the following key regions to facilitate file management:
+In this section, I implement a more realistic version of the file system implemented earlier. A Unix file system is implemented on top of an array of bytes. Unix structures this medium into the following key regions to facilitate file management:
 \begin{itemize}
-    \item The \textit{Directory Region} - this stores mappings between human-readable filenames and their corresponding Inode indexes.
-    \item The \textit{Inode Region} - the Inode list contains meta data about each file.
-    \item The \textit{Data Region} - this stores the actual contents of file which are accessed via pointers stored in the INode.
+    \item \textit{Directory Region} - this stores mappings between human-readable filenames and their corresponding \textit{inode} indexes.
+    \item \textit{Inode Region} - this is a list of inode's that each contain  meta data about their associated file.
+    \item \textit{Data Region} - this stores the actual contents of a file which is located using a pointer stored in the inode.
 \end{itemize}
 
-The file system is defined as a record type, composed of the above three lists and two integers to point where the next free inode and data regions are located.
+In my Koka implementation, the file system is modelled as a record, composed of the above three lists and two integers that point to the location of the next free inode and data region:
 
 \begin{lstlisting}
 type directory 
@@ -516,14 +510,14 @@ type dataRegion
   DataRegion
     dr : list<(int, string)>
 
-type iNode
+type Inode
   INode
     no : int
     loc : int
 
 type iList 
   IList
-    il : list<(int, iNode)> 
+    il : list<(int, Inode)> 
 
 struct fileSystem
   dir   : directory
@@ -534,7 +528,7 @@ struct fileSystem
 
 \end{lstlisting}
 
-We define the initial file system state \texttt{fs0} as:
+I define the initial file system state \texttt{fs0} as:
 \begin{lstlisting}
 val fs0 : fileSystem =
   FileSystem (
@@ -547,15 +541,13 @@ val fs0 : fileSystem =
 
 \subsection{File Reading and Writing}
 
-Effects for reading and writing to our file system are then defined. The effect \lstinline{read} is parameterised with an iNode number and returns an \lstinline{Option<String>} type, which indicates the success or failure of a read operation from the specified iNode. The \lstinline{write} operation takes an integer to denote the iNode and a string to append to the file associated with this iNode. It does not indicate whether or not the write succeeded.
+An effect for reading and writing to the file system is then defined. The \lstinline{read} operation is parameterised with an inode number and returns an \lstinline{option<string>} type, which allows us to account for the possibility read failures. The \lstinline{write} operation takes an integer to denote the inode and a string to append to the file associated with this inode. It does not indicate whether the write has succeeded:
 
 \begin{lstlisting}
 effect fileRW
     fun read( ino : int ) : option<string>
     fun write( ino : int, s : string ) : ()
 \end{lstlisting}
-
-
 
 \begin{lstlisting}
 fun fread( ino : int, fs : fileSystem ) : <div,fail|e> string
@@ -564,7 +556,7 @@ fun fread( ino : int, fs : fileSystem ) : <div,fail|e> string
     ret
 \end{lstlisting}
 
-The various \texttt{lookup} utility functions must account for the possibility that they could fail. We introduce a \texttt{fail} effect and an associated \texttt{withDefault} handler to deal with this scenario.
+The \texttt{lookup} utility function must account for the possibility of failure, so I introduce a \texttt{fail} effect and an associated \texttt{withDefault} handler to deal with this scenario:
 
 \begin{lstlisting}
 effect fail
@@ -577,7 +569,7 @@ fun withDefault<a>(default: a, m: () -> <div,fail|e>a) : <div|e>a
   m()
 \end{lstlisting}
 
-The  handler for \lstinline{read} and \lstinline{write} operations in our system is shown below. We wrap \lstinline{read} and \lstinline{write} operations with \lstinline{withDefault} to provide error handling and failures in \lstinline{lookup} and \lstinline{modify} functions return \lstinline{None}.
+The  handler for \lstinline{read} and \lstinline{write} operations in my system is shown below. Within this handler I include the  \lstinline{withDefault} handler to provide error handling in the event of failures in the \lstinline{lookup} and \lstinline{modify} functions:
 
 
 \begin{lstlisting}
@@ -600,16 +592,19 @@ fun fileRW<a>(m: () -> <fileRW,div,state<fileSystem>|e>a) : <state<fileSystem>,d
 \end{lstlisting}
 
 
-\subsection{File Creation and Opening}
+\subsection{File Creation and File Opening}
 
-The \lstinline{fileCO} effect and operations to create and open files are shown below:
+The \lstinline{fileCO} effect and the operations it uses to create and open files are shown below:
 
 \begin{lstlisting}
 effect fileCO
   ctl create( fname : string ) : option<int>
   ctl open( fname : string ) : option<int>
 \end{lstlisting}
-A simplified serial file system is shown below. Note, the system does not track which processes have opened each file in the Open File Table. Therefore, concurrent reading or writing operations to the same files from multiple processes are not restricted - our \lstinline{open} file operation simply retrieves the associated iNode from the file name in the directory.
+I now introduce a simplified serial file system. Note, the system does not track which processes have opened which files in the \textit{Open File Table}. Therefore, concurrent reading or writing operations to the same file from multiple processes are not restricted - our \lstinline{open} file operation simply retrieves the associated inode from the file name in the directory:
+
+
+
 
 \begin{lstlisting}
 fun fopen(fname: string, fs : fileSystem) 
@@ -625,10 +620,10 @@ fun fopen(fname: string, fs : fileSystem)
 \end{lstlisting}    
 
 
-When creating a file we must handle two possibilities:
+When creating a file one must handle two possibilities:
 \begin{enumerate}
-    \item \textbf{The file already exists.} In this case we must remove the file contents and simply return the associated  iNode and the modified FileSystem.
-    \item \textbf{The file doesn't exist.} In this case we must first allocate space in the data region, then allocate an iNode and then add the file name to the directory. Here the operation returns the newly created iNode of this file and the modified FileSystem as a tuple.
+    \item \textbf{The file already exists.} In this case, we must remove the previous file contents and simply return the associated  inode and the updated FileSystem.
+    \item \textbf{The file doesn't exist.} In this case we must first allocate space in the data region, then allocate an inode, and then add the file name to the directory. Here the operation returns the newly created inode of this file and the updated FileSystem.
 \end{enumerate}
 
 \begin{lstlisting}
@@ -659,7 +654,7 @@ fun has<a, b>(key: string, xs: directory) : <div> bool
     })
 \end{lstlisting}
 
-We can now implement the handler for the \lstinline{create} an \lstinline{open} operations.
+Using the functions defined above, I can now implement the handler for the \lstinline{create} an \lstinline{open} operations:
 
 \begin{lstlisting}
 fun fileCreateOpen<a>(action : () -> <fileCO, div, state<fileSystem>|e> a) : <state<fileSystem>,div|e> a
@@ -670,24 +665,21 @@ fun fileCreateOpen<a>(action : () -> <fileCO, div, state<fileSystem>|e> a) : <st
         val fs0 = get()
         val (ino,fs1) = fcreate(name, fs0)
         put(fs1)
-        Some(ino)
-      })
+        Some(ino))
       resume(maybeIno)
-    }
 
-    ctl open(name) {
+    ctl open(name) 
       val maybeIno = withDefault(None, fn() {
         val fs0 = get()
         val ino = fopen(name, fs0)
         Some(ino)
       })
       resume(maybeIno)}  
-  }
   action()
 \end{lstlisting}
 
 \subsection{File Linking and Unlinking}
-Operations for \textbf{linking} and \textbf{unlinking} files, are shown below. Unix supports two types of linking, \textbf{hard} and \textbf{symbolic}. With hard links, multiple file names point to the same iNode, allowing the creation of multiple references to the same underlying file.
+Operations for \textit{linking} and \textit{unlinking} files, are shown below. Unix supports two types of links, \textit{hard} and \textit{symbolic}. I implemented only hard links, where multiple filenames refer to the same inode, enabling shared references to a single file.
 
 \begin{lstlisting}
 effect fileLU
@@ -697,30 +689,24 @@ effect fileLU
 
 An example of the linking implementation is shown below:
 \begin{lstlisting}
-fun flink(src : string, dest : string, fs : fileSystem) : <div,fail> fileSystem {
+fun flink(src : string, dest : string, fs : fileSystem) : <div,fail> fileSystem 
   if has(dest, fs.dir) then
     fail()  // If `dest` exists, fail
-  else {
+  else 
     val ino = lookupDirectory(src, fs.dir)
-
     val dir' = Directory(Cons((dest, ino), fs.dir.d_list))
-
     val inode = lookupINode(ino, fs.ilist)
-
     val inode' = INode(inode.no, inode.loc + 1)
-
     val ilist' = modifyINode(ino, inode', fs.ilist)
-
     FileSystem(dir', ilist', fs.dreg, fs.dnext, fs.inext)
-  }
-}
 \end{lstlisting}
 
 
 \section{Piping}
 Piping is a important core feature of Unix,  as it allows developers to write  small, focused modules rather than monolothic programs. These modules can be composed together to create new functionalities, removing the necessity to write new programs for each new functionality.
 
-The signatures below show the \lstinline{produce} and \lstinline{consume} effects required to implement piping: \lstinline{produce} is parametrised by a value of type \lstinline{b}, allowing it to \textit{yield} a value to the read-end. Conversely, the \lstinline{consume} operation has a return type of \lstinline{b}, indicating that it awaits for a value.
+The signatures below define the \lstinline{produce} and \lstinline{consume} effects used for piping: \lstinline{produce} takes a value of type \lstinline{b} to yield to the reader, while \lstinline{consume} returns a value of type \lstinline{b}, indicating it waits for input:
+
 \begin{lstlisting}
 effect produce<b>
   ctl produce(x : b) : ()   
@@ -730,7 +716,7 @@ effect consume<b>
 
 \end{lstlisting}
 
-The shallow handlers, \lstinline{pipe} and \lstinline{copipe}, mutually recurse to handle \lstinline{consume} and \lstinline{produce} operations. In our system this is handled as a function, whereas in Unix, these are implemented as processes which allowing for concurrency.
+The shallow handlers, \lstinline{pipe} and \lstinline{copipe}, mutually recurse to handle \lstinline{consume} and \lstinline{produce} operations. In my system, \lstinline{pipe} and \lstinline{copipe} are  functions, so no interleaving occurs, unlike in real Unix, where they are implemented as separate processes and can run concurrently:
 
 \begin{lstlisting}
 fun pipe<a,b,e>(p : () -> <produce<b>|e> a,c : () -> <consume <b>|e> a) : e a
@@ -745,22 +731,10 @@ fun copipe(c : b -><consume<b>, div|e>, c : () -> <produce<b>, div|e> a): <div|e
 
 \section{Process Synchronisation}
 
-In this section we introduce more advanced techniques for process scheduling to allow for partial ordering. 
-
-Currently, our scheduling system does not have any synchronisation primitives, so we have no control over how processes interact. The scheduler can be extended to provide  partial ordering between processes. Controlling the order in which processes are executed, vital when executing tasks that have temporal dependencies. 
-
-We begin by defining the following effects:
+This section extends the scheduler to support partial ordering. Without synchronisation primitives, the scheduler cannot coordinate process interaction, which is an essential requirement for temporally dependent tasks.
 
 
-\begin{enumerate}
-    \item We update the forking mechanism \lstinline{ufork} to a return an integer instead of a boolean. The operation still  returns twice: it returns the process identifier (PID) to the parent, and 0 to the child. 
-
-    \item The \lstinline{interrupt} operation is implemented exactly the same as before, i.e. it is invoked to suspend the current process to allow another to run. 
-
-    \item The \lstinline{wait} operation is parametrised with an integer, which represents the process which must be completed before the invoking process can continue. The invoking process will be blocked until this happens.
-\end{enumerate}
-
-
+I begin by defining the following effect:
 \begin{lstlisting}
 effect co
   ctl ufork() : int
@@ -768,15 +742,23 @@ effect co
   ctl sinterrupt() :()
 \end{lstlisting}
 
+\begin{enumerate}
+    \item I update the forking operation \lstinline{ufork}, to a return an integer instead of a boolean. The operation still returns twice: it returns the process identifier (PID) to the parent, and 0 to the child. 
 
-We then define the following three data types: 
+    \item The \lstinline{interrupt} operation is implemented exactly the same as before, i.e. it is invoked to suspend the current process to allow another to run. 
+
+    \item The \lstinline{wait} operation is parametrised with an integer, which represents the process that must be completed before the invoking process can continue. The invoking process will be blocked until this happens.
+\end{enumerate}
+
+
+I then define the following three data types: 
 
 \begin{enumerate}
     \item \lstinline{proc} - represents a reified process, i.e. a process that has been captured in a function which can be run later. It returns a list of type \lstinline{list<int, a>} which represents the \textit{PID} and results of all the processes created during the execution of this process.  
 
     \item \lstinline{pstate} - represents the internal scheduling state of a single process. It is a \lstinline{sum} type composed of two constructors, \lstinline{Ready} and \lstinline{Blocked}. The latter has an additional field, \textit{PID}, which is the identifier of the process that it is waiting on. 
 
-    \item \lstinline{sstate} - represents the complete state of the scheduler and keeps track of everything it needs to manage and schedule multiple processes i.e. a list the processes still to be executed, the list of completed processes, the id (\lstinline{pid}) of the process currently being executed,  and a fresh process id \lstinline{pnext}.
+    \item \lstinline{sstate} - represents the complete state of the scheduler and keeps track of everything it needs to manage and schedule multiple processes, i.e. the list of the processes still to be executed, the list of completed processes, the id (\lstinline{pid}) of the process currently being executed,  and a fresh process id \lstinline{pnext}.
 
 \end{enumerate}
 
@@ -802,11 +784,11 @@ type sstate<a>
 \end{lstlisting}
 
 
-We then define an auxiliary function which abstracts some of the scheduling logic. This function considers three cases:
+I then define an auxiliary function which abstracts some of the scheduling logic. This function considers three cases:
 \begin{enumerate}
-    \item \textbf{Ready} - here the next process is run immediately.
-    \item \textbf{Blocked} - here the blocked process is sent to the back of the queue.
-    \item An Empty queue - here there are no more processes to run, so the list of process results is returned.
+    \item \textbf{Ready} - the next process is run immediately.
+    \item \textbf{Blocked} - the blocked process is sent to the back of the queue.
+    \item \textbf{Nil} - there are no more processes left to run, so the list of process results is returned.
 \end{enumerate}
 
 \begin{lstlisting}
@@ -823,7 +805,7 @@ fun runNext<a>(st: sstate<a> ) : <div,co|e> list<(int,a)>
       res(newState)
 \end{lstlisting}
 
-The scheduler below is a handler for the concurrency effect, \lstinline{co}, that occurs when running the suspended computation, \lstinline{comp}. 
+The scheduler below is implemented as a handler for the concurrency effect, \lstinline{co}, that occurs when running the suspended computation, \lstinline{comp}: 
 
 
 \begin{lstlisting}
@@ -857,31 +839,31 @@ fun scheduler<a,e>(comp : () -> <co,div> a, init : sstate<a>) : <div|e> list<(in
       runNext(Sstate( q = newQ, done = init.done, pid=init.pid,pnext=init.pnext))      
   comp()
 \end{lstlisting}    
-The scheduler handles \lstinline{fork} operations by constructing a child process in a \lstinline{Ready} state, adding it to the end of the process queue. The child's resumption is parametrised with 0 to indicate to the resumption that it is child process. Finally, we parametrise the resumption to the parent with the \textit{PID} of the child process.
+The scheduler handles \lstinline{ufork} operations by constructing a child process in a \lstinline{Ready} state and adding it to the end of the process queue. The child is resumed with 0 to indicate it is the child process, while the parent is resumed with the child's PID.
 
-The \lstinline{wait} operation is parametrised by an integer which indicates the process id of the process it is waiting upon. The process queue is checked for the id of the process it is waiting for. If this process is in the queue, the waiting process is added in a Blocked state to the end of the process queue. Otherwise, it is added in a \textit{ready} state to the end of the process queue.
+The \lstinline{wait} operation takes a PID as an argument and checks the process queue for a matching process. If this process is in the queue, the waiting process is added in a Blocked state to the end of the process queue. Otherwise, it is added in a ready state to the end of the process queue.
 
 \lstinline{interrupt} simply adds the current process to the end of the process queue.
 
 \section{Chapter Conclusion}
 
-In this chapter we have shown how effect handler-oriented programming provides a clean, modular and composable framework for solving complex control flow and dynamic scoping problems. Using a Unix-like system as a case study, we have demonstrated how features such as \textit{file I/O}, \textit{environment variables}, \textit{process forking}, and \textit{scheduling} can each be modelled as distinct effects and handled independently. 
+In this chapter I have shown how effect handler-oriented programming provides a clean, modular and composable framework for solving complex control flow and dynamic scoping problems. Using a Unix-like system as a case study, I have demonstrated how features such as \textit{file I/O}, \textit{environment variables}, \textit{process forking}, and \textit{scheduling} can be modelled as distinct effects and handled independently. 
 
 
-In the next chapter we will demonstrate how the same modular handler-based abstractions that aid program design also support program reasoning and verification.
+In the next chapter I will demonstrate how the same modular handler-based abstractions that aid program design also support program reasoning and verification.
 
 
 
 
 \chapter{Reasoning}
 
-In this section we reason about deep handlers using algebraic equivalences, as defined in Pretnar's \textit{Handlers Tutorial} \cite{pretnar_introduction_2015}, (\textit{see figure \ref{fig:equational-laws} below}).  These equivalences provide a method for proving formal properties for  programs implemented using deep effect handlers. Using these rules to transform one computation into another, computations can be shown to be \textit{observationally equivalent}.
+In this section I reason about deep handlers using algebraic equivalences, as defined in Pretnar's \textit{Handlers Tutorial} \cite{pretnar_introduction_2015} which are shown in Figure \ref{fig:equational-laws}.  These equivalences provide a method for proving formal properties for programs implemented using deep effect handlers. Using these rules to transform one computation into another, computations can be shown to be \textit{observationally equivalent}.
 
 In the context of effectful computations, observational equivalence holds when two computations, possibly with different internal structure or steps, result in the same sequence of externally visible effects \cite{sannella1987observational}. In other words, from the perspective of any observer or context interacting with the computation, the computations behave identically, despite any internal differences. External observers include the file system or user IO, i.e. system that could observe or be affected by the computations execution.
 
-\textcolor{red}{Effect handlers make this kind of reasoning possible by separating the syntax and semantics of effects \cite{TheLogicAndHandlingOfAlgebraicEffects}. }
 
-In what follows, I attempt to demonstrate the of use algebraic equivalences to verify the correctness of my Unix implementation. Note, where associated equational theories exist for the effects modelled, such as state or nondeterminism, I show where my implementations satisfy the laws of those theories. In the case where no established equational theory applies, I apply equivalence rules to demonstrate why my implementation behaves as intended.
+
+In what follows, I attempt to demonstrate the of use algebraic equivalences to verify the correctness of my Unix implementation. Note, where associated equational theories exist for the effects modelled, such as state or nondeterminism, I show where my implementations satisfy the laws of those theories. In the case where no established equational theory applies, I use equivalence rules to reason about my implementations expected behaviour.
 
 
 \begin{figure}[H]
@@ -914,6 +896,65 @@ In the following rules, we have \( h = \mathbf{handler}\ \{ \mathbf{return}\ x \
 \end{figure}
 
 
+\section{Exceptions}
+Processes can terminate successfully by running to completion, or they can terminate by performing an \textit{exit} system call, i.e. with an exception. The \textit{exit} call takes a numeric argument indicating the exit status of the process. Unlike other operations, exit discards the continuation and terminates immediately.
+
+When composed with other effects, exceptions can break the algebraic properties that the individual effects held in isolation. Their algebraic properties, therefore, only hold on the assumption that the computation has no exceptions. An exception holds only one property; any operations that succeed it are semantically irrelevant.
+
+\begin{figure}[H]
+\centering
+
+% Effect signature
+\effectDef{\textbf{Status}}{\text{exit : Int} \rightarrow Int}
+
+\vspace{-1em}
+
+% Handler implementation
+\[
+\mathrm{status} \;\overset{\mathrm{def}}{=}\;
+\mathrm{handler} \;\left\{
+\begin{array}{ll}
+  \mathrm{\textbf{return}\:\_} & \mapsto 0 \\[0.5ex]
+  \langle\!\langle \mathrm{exit} \langle n\rangle\rangle & \mapsto n \\[0.5ex]
+\end{array}
+\right\}
+\]
+
+\caption{Effect signature and handler implementation of exceptions via the \textbf{Status} effect.}
+\label{fig:status-handler}
+\end{figure}
+
+
+The behaviour of an \lstinline{exit} operation is described by the absorption property. When \lstinline{exit} is called within a computation, any continuation is rendered irrelevant. The absorption property of \lstinline{Exit n} is shown below:
+
+\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
+
+
+{\large \textbf{Proof of Absorption}}
+
+{Left Hand Side}
+
+\[
+\begin{array}{l}
+\quad\equiv\quad (11) \\[5pt]
+v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } C/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+n
+\end{array}
+\]
+
+{Right Hand Side}
+
+\[
+\begin{array}{l}
+\quad\equiv\quad (11) \\[5pt]
+v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } D/k] \\[5pt]
+\quad\equiv\quad (\text{subst}) \\[5pt]
+n
+\end{array}
+\]
+
+
 
 
 
@@ -924,9 +965,8 @@ In the following rules, we have \( h = \mathbf{handler}\ \{ \mathbf{return}\ x \
 \label{subsec:simplified-state}
 Before applying equivalence rules to my Unix implementation, I begin by reasoning about a minimal model of state, consisting of a single cell with associated \lstinline{get} and \lstinline{put} operations. These handlers were taken from Pretnar's \textit{Handler Tutorial} \cite{pretnar_introduction_2015} (\textit{see figure \ref{fig:state-handler}}). Although this model is deliberately simple, the reasoning principles it demonstrates are general, and will be applicable to more complex examples shown later on.  
 
-\begin{figure}[H]
-\centering
-
+\begin{figure}
+   
 \[
 \textbf{State} := \left\{
 \mathsf{get} : 1 \rightsquigarrow S, \quad
@@ -972,7 +1012,7 @@ We can prove that performing consecutive \lstinline{put} operations retains only
 \]
 
 \underline{Left Hand Side}
-
+\vspace{-1em}
 
 \begin{align*}
 &\quad\equiv\quad (11) \\
@@ -1017,6 +1057,8 @@ Following the method used in the single-cell state model described above, we can
 \mathsf{\textbf{Session}} := \{ \mathsf{Ask} : 1 \rightsquigarrow \mathsf{String}, \quad \mathsf{Su} : \mathsf{User} \rightsquigarrow 1 \}
 \]
 
+\vspace{-1em}
+
 \begin{align*}
 \text{sessionmgr} \langle u, m \rangle \;\overset{\mathrm{def}}{=}\;& \\
 \quad \text{env} \langle u, (\lambda \langle \rangle.\; &\textbf{handle}\; m \langle \rangle\; \textbf{with} \\
@@ -1029,7 +1071,7 @@ Following the method used in the single-cell state model described above, we can
 ) \rangle
 \end{align*}
 
-
+\vspace{-1em}
  
 \[
 \begin{array}{l}
@@ -1148,9 +1190,9 @@ The \textit{Single UNIX Specification} \cite{SUSv4} does not provide an algebrai
     \item \textbf{Dangling symbolic links} - where a link no longer points to a valid file
 \end{itemize}
 
-Unfortunately, though, reasoning about the \textit{basic serial file system} in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply these equivalences, each small step  rapidly branched the number of computation paths that had to be followed due to the way different layers of the file system e.g. directories, iNodes, and data blocks, depend on one another's function calls. 
+Unfortunately, though, reasoning about the \textit{basic serial file system} in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply these equivalences, each small step  rapidly branched the number of computation paths that had to be followed due to the way different layers of the file system e.g. directories, Inodes, and data blocks, depend on one another's function calls. 
 
-Unlike the prior simplified examples, reasoning about Hillerström's serial file system requires one to take into account the interactions between multiple nested data structures, such as the directory, the iNode list andthe data region. Each of these structures relied on invariants maintained by the others. For example, directory entries had to point to valid iNodes, iNodes had to reference valid and allocated data blocks, and both pointers had to remain consistent throughout execution. This tight coupling made it impractical to reason about each component in isolation.
+Unlike the prior simplified examples, reasoning about Hillerström's serial file system requires one to take into account the interactions between multiple nested data structures, such as the directory, the Inode list andthe data region. Each of these structures relied on invariants maintained by the others. For example, directory entries had to point to valid Inodes, Inodes had to reference valid and allocated data blocks, and both pointers had to remain consistent throughout execution. This tight coupling made it impractical to reason about each component in isolation.
 
 Operations such as file writing and creation involved multiple layers of functions and handlers for operations including \lstinline{get}, \lstinline{put}, \lstinline{lookup}, \lstinline{modify}, \lstinline{fileRW}, \lstinline{fopen}, \lstinline{fwrite}, \lstinline{withDefault} etc. The need to thread through and update each of these components made algebraic reasoning impractical.
 
@@ -1193,7 +1235,7 @@ However, the semi-lattice model of nondeterminism becomes problematic when one a
 \[
 \mathsf{fork} : \{ \mathsf{Fork} : 1 \rightarrow \mathsf{Bool} \}
 \]
-
+\vspace{-1em}
 \[
 \text{nondet} \ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
 \begin{array}{ll}
@@ -1339,7 +1381,7 @@ a \texttt{ ++ } (b \texttt{ ++ } c) \\
 
 \underline{Right Hand Side}
 
-
+\vspace{-1em}
 
 \[
 \begin{array}{l}
@@ -1572,137 +1614,67 @@ The limits of algebraic reasoning for global state evaluation are shown below. I
 It will be seen that this creates a nondeterministic outcome, as the order in which the scheduler chooses to run these branches will affect the final state of the system. 
 
 
-\section{Exceptions}
-Processes can terminate successfully by running to completion, or they can terminate by performing an \textit{exit} system call, i.e. an exception. The \textit{exit} call takes a numeric argument indicating the exit status of the process. Unlike other operations, exit does not allow for continuation; it discards the remaining computation and terminates execution immediately.
-
-When composed with other effects, exceptions can break the algebraic properties that the individual effects held in isolation (\textcolor{red}{can you be specific about the scope of the exception handler}). Algebraic properties, therefore, only hold on the assumption that the computation has no exceptions. An exception holds only one property, namely that any operations that succeeds it are semantically irrelevant.
-
-
-\begin{figure}[H]
-\centering
-
-% Effect signature
-\effectDef{\textbf{Status}}{\text{exit : Int} \rightarrow 0}
-
-\vspace{-1em}
-
-% Handler implementation
-\[
-\mathrm{status} \;\overset{\mathrm{def}}{=}\;
-\mathrm{handler} \;\left\{
-\begin{array}{ll}
-  \mathrm{\textbf{return}\:\_} & \mapsto 0 \\[0.5ex]
-  \langle\!\langle \mathrm{exit} \langle n\rangle\rangle & \mapsto n \\[0.5ex]
-\end{array}
-\right\}
-\]
-
-\caption{Effect signature and handler implementation of exceptions via the \textbf{Status} effect.}
-\label{fig:status-handler}
-\end{figure}
-
-In the effect signature above, because \lstinline{Exit n} returns type \lstinline{0}, i.e. the uninhabited type, it cannot yield a result. To embed it in a computation expecting a value of type $\alpha$, we use the \lstinline{absurd} function to coerce it from the empty type to type $\alpha$, this ensures the expression remains well-typed.
-
-\[
-\mathrm{exit\:n} \;\overset{\mathrm{def}}{=}\;
-  \text{absurd\:(\textbf{do}\:Exit\:n)}
-\]
-
-
-The behaviour of an \lstinline{exit} operation is described by the absorption property. When \lstinline{exit} is called within a computation, any continuation is rendered irrelevant. The absorption property of \lstinline{Exit n} is shown below:
-
-\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
-
-
-{\large \textbf{Proof of \textit{Absorption}}}
-
-\underline{Left Hand Side}
-
-\[
-\begin{array}{l}
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{absurd (do Exit } n) (y. C) \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } C/k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-n
-\end{array}
-\]
-
-\underline{Right Hand Side}
-
-\[
-\begin{array}{l}
-\quad\equiv\quad (11) \\[5pt]
-\text{absurd (do Exit } n) (y. D) \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } D/k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-n
-\end{array}
-\]
-
 
 \section{Process Synchronisation}
-So far we have introduced a basic time-sharing, using interrupts and the scheduler, that allows the interleaving of process execution. However, as mentioned before, the way that processes are interleaved is non-deterministic, in other words processes don't know the order in which the will be executed. 
+\label{process-synchronisation}
 
-This is a problem because, as we have demonstrated, many of our effects are non-commutative meaning that the order of execution is important for correctness. This creates what is known as a "race condition", A race condition arises when the correctness of a program depends on the nondeterministic interleaving of concurrent operations on shared state. Without explicit synchronisation, the outcome is unpredictable and may differ across runs, making correct behaviour accidental rather than guaranteed.
+Initially I had hoped that process synchronisation primitives would offer a rich avenue for algebraic reasoning; however, this soon proved to be impossible due the inherent inability to model the scheduler algebraically.
 
-Currently the only way to guarantee execution order is to execute all the steps, in the same process, sequentially with no interrupts which defeats the point of our time sharing system as no interleaving is possible in this time, which blocks the other processes.
+To illustrate the necessity of synchronisation primitives, one must first understand the limitations of the basic scheduler. The scheduler provides process interleaving, but it does not provide an ability to order the execution of processes, i.e. it is "nondeterministic". 
 
-To introduce flexibility around process interleaving whilst maintaining guarantees about execution ordering we introduced two features
-\begin{itemize}
-    \item \lstinline{Wait} \textbf{system calls: } This allows a parent to suspend execution until its child process (identified by its process id) has finished executing. Think of this as introducing a causal dependency, the parent can only when the child finishes.
-    \item \textbf{Mutexes: } This a process to lock a resource, meaning that whilst the process holds this lock, no other process can alter this resource. This guarantees that between interrupts other processes don't alter the resource, which could potentially lead to file corruption. 
-\end{itemize}
+Nondeterminism is problematic because, as already demonstrated, many of the \textit{effects} are non-commutative, meaning that the order of their execution can influence their behaviour. This can give rise to a \textit{race condition} - a scenario where two or more concurrent processes attempt to access or modify shared state simultaneously, with the final result depending on the exact timing of these interleavings.
 
-Combining these two properties by;
+Hillerström mitigates this problem by introducing a more complex scheduler that can handle \lstinline{wait} operations. These allow a process to suspend further execution until the process it is waiting upon finishes. However, this is still not enough to ensure correct write ordering, as other processes could still potentially alter, i.e. corrupt, the resource whilst the original process is suspended.  
+
+To maintain flexibility around process interleaving and to guarantee write ordering, we introduce a new feature, a \textit{mutex}, which can be combined with the \lstinline{wait} operation. A \textit{mutex} is a locking mechanism used to ensure that only one process can access a shared resource at a time.
+
+
+By combining these synchronisation primitives we can:
 \begin{enumerate}
-    \item Locking the resource, to prevent other processes simultaneously writing to (and thereby corrupting) our resource
-    \item Splitting up the responsibility for writes between its children, and waiting in order for them to complete
-    \item Unlocking the resource to allow other processes to access it
+    \item Lock a resource to prevent other processes interfering with the resource
+    \item Enforce process orderings using \lstinline{wait} operations
 \end{enumerate}
 
-we can provide partial ordering guarantees about write safety whilst still allowing for concurrency.
 
+However, despite my best attempts, reasoning about these partial ordering guarantees proved difficult. Unlike other features in the system, the schedulers semantics rely on mutable structures (specifically, the state of the process queue) which fall outside the scope of static algebraic equivalences.
 
-Reasoning about the scheduler is very difficult because it introduces non-determinism into our system. Unlike the algebraic effects, which have clear equational rules, the behaviour of the scheduler depends on the runtime state of the process queue and the particular order in which processes are resumed. 
-
-Unfortunately reasoning about the scheduler has long been difficult to reason about \cite{}. As noted in \textit{The Logic and Handling of Algebraic Effects}, recursive definitions over both parameters are not primitively recursive. There is no clear "smaller" structure to descend into as neither parameter is fixed while the other reduces. This breaks traditional inductive reasoning and requires more complex mutual or nested inductions, which are notoriously difficult to manage algebraically.
-
-
-
-
-
+It is widely recognised that schedulers are difficult to reason about formally. \textit{Pretnar}, in \textit{The Logic and Handling of Algebraic Effects} \cite{}, highlights the difficulty of representing the synchronisation operator, which takes two computations and is used to model concurrent execution, with effect handlers. The issue stems the recursive nature of its parameters on both sides: each operand is a computation that may reduce or emit effects independently, so the recursion cannot rely on one side remaining fixed. Without a clearly decreasing argument, primitive recursion is impossible, making traditional inductive reasoning inapplicable.
 
 \section{Reasoning Conclusions}
+\label{reasoning-conclusion}
+In this chapter I showed how algebraic equivalences can be used to reason about the behaviour of effect handlers. I began reasoning about the properties of our \lstinline{status} handler showing that exceptions only hold the absorption property, and discussed how many of the rules that held in an isolated setting break down under composition with this handler. 
 
-In this chapter I showed how algebraic equivalences can be used to reason about the behaviour of effect handlers. I began with a simplified model of state, which enabled reasoning about environment variables in my system. I then tried to extend this method to a more complex state model for reasoning about the file system. However, this approach quickly became impractical, as the equivalences grew too complex to manage.
+I then reasoned about a simplified model of state, which enabled reasoning about environment variables in my system. I then tried to extend this method to a more complex state model for reasoning about the file system. However, this approach quickly became impractical, as the equivalences grew too complex to manage.
 
 
 I then discussed the forking operation and considered the properties of nondeterminism in our system, demonstrating how they differ from notion of nondeterminism found in abstract equational theories.
 
-I explored two models of state, local and global, determined by the composition order of the \textit{nondeterminism} and \textit{state} handlers. I highlighted an analogy: global state corresponds to shared file system state, while local state models process-local state. For each variant, I verified that the algebraic properties required by Unix specifications were preserved.
+I explored two models of state, local and global, determined by the composition order of the \textit{nondeterminism} and \textit{state} handlers. I highlighted an analogy: global state corresponds to shared file system state, while local state corresponds to process-local state. For both variants, I verified that the algebraic properties required by Unix specifications were preserved.
 
 
-I then went on to reason about the properties of our \lstinline{status} handler showing that exceptions only hold the absorption property, and showed that many of the rules that held in an isolated setting break down under composition with this handler. 
 
-\textcolor{red}{It is very difficult to reason about any properties which rely on the scheduler. This makes reasoning about any forms of process synchronsiation or interprocess communication very difficult to do. Unfortunately effects like \lstinline{Wait} or \lstinline{Acquire} \lstinline{Release} which introduce partial order semantics can't be easily reasoned about using our equivalences as they depend upon the dynamic execution state of our system.}
+As mentioned previously, it is notoriously difficult  to reason about properties which depend on the scheduler. Consequently, reasoning about any forms of process synchronisation to provide partial ordering guarantees was not possible.
 
+In conclusion, this chapter can be summarised by the following observations:
+\begin{itemize}
+    \item Algebraic reasoning proved effective of verifying the correctness of simple handlers; however, more complex handlers without associated equational theories often proved too difficult to reason about in practice.
+    \item There are limitations to what can be reasoned about with algebraic equivalences - features like the scheduler are outwith their applicable scope.
+\end{itemize}
 
 
 \chapter{Conclusions}
 
 \section{Unix Implementation in Koka}
-We have successfully realised the "Toy Unix" system described in Hillerström's paper, we provided implementations for exception handling, a basic IO scheme, user functionality, a basic serial file system, piping and two methods of process scheduling. We achieved the goal we set out to do namely, to show that we can implement a simulation of Unix, tackling the complex problems this presents, in a concise and modular way.
+In this project I have implemented the "Tiny Unix" system described by Hillerström \cite{hillerstrom_foundations_nodate}. I implemented exception handling, a basic I/O scheme, user functionality, a basic serial file system, piping, and two methods of process scheduling. I successfully achieved my first goal that was to demonstrate that it is possible to simulate a Unix-like system in Koka in a concise and modular manner, despite the complex challenges this posed.
 
-\subsection*{Future Work}
-Implementing the process synchronisation features described in the previous chapter would provide vital functionality to our Unix system. Currently, if the system wants to perform writes in order, it can't do any interleaving, meaning that all writes are blocking defeating the purpose of a time-sharing system. Mutexes would provide a simple way to guarantee that resources can't be tampered with.
+\subsection*{Koka Implementation: Future Work}
+The Koka implementation could be extended by including the features described in section \ref{process-synchronisation}. Currently, the system can't guarantee correct write order if it is not done sequentially, i.e. within a single process - writes must be performed without interrupts, defeating the purpose of a time-sharing system. The addition of \textit{mutexes} with \lstinline{wait} operations would address this problem and provide correct interleaved writing.
 
 \section{Reasoning}
-We successfully verified that our implementation of Unix follows the rules expected of it according to the Unix Specifications. We quickly ran into problems when trying to reason about anything which was not directly related to code structure, the dynamic state of the scheduler prevented us doing any reasoning about synchronisation or IPC.
-\subsection*{Future}
-Further reasoning about partial ordering of effectful operations using Waits and Mutexes. We could also implement a model of Local File Descriptor tables for processes and a global Open File Table. This would open up reasoning about sharing and isolation of state and how this aids modularity and functionality.  
+Although I was able to verify that some features of my Unix implementation comply with the rules set out in the Unix Specifications, I was unable to formally prove the correctness  of all features using algebraic equivalences, due to the challenges discussed in section \ref{reasoning-conclusion}.
+\subsection*{Reasoning: Future Work}
+This project could be expanded by exploring the techniques of automated reasoning outlined in McLaughlin's PhD thesis, \textit{Relational Reasoning for Effects and Handlers
+} \cite{McLaughlin2020}. In particular, his approach could be especially useful in verifying our implementation of piping.
 
 % \bibliographystyle{plain}
 \bibliographystyle{plain}
