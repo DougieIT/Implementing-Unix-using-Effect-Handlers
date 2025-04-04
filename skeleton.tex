@@ -963,7 +963,7 @@ n
 \subsection{Simplified single-cell state}
 
 \label{subsec:simplified-state}
-Before applying equivalence rules to my Unix implementation, I begin by reasoning about a minimal model of state, consisting of a single cell with associated \lstinline{get} and \lstinline{put} operations. These handlers were taken from Pretnar's \textit{Handler Tutorial} \cite{pretnar_introduction_2015} (\textit{see figure \ref{fig:state-handler}}). Although this model is deliberately simple, the reasoning principles it demonstrates are general, and will be applicable to more complex examples shown later on.  
+Before applying equivalence rules to my Unix implementation, I begin by reasoning about a minimal model of state, consisting of a single cell with associated \lstinline{get} and \lstinline{put} operations. These handlers were taken from Pretnar's \textit{Handler Tutorial} \cite{pretnar_introduction_2015}, shown in Figure \ref{fig:state-handler}. Although this model has been deliberately simplified, the reasoning principles it demonstrates are general, and will be applicable to the more complex examples shown later on.  
 
 \begin{figure}
    
@@ -984,11 +984,11 @@ Before applying equivalence rules to my Unix implementation, I begin by reasonin
 \label{fig:state-handler}
 \end{figure}
 
-In the handler above, the \lstinline{get} operation returns a function which is parametrised by the current state \lstinline{s}. This function applies the continuation \lstinline{k}  to \lstinline{s}, providing a return value to the \lstinline{get} operation. The subsequent \lstinline{s} in the function body \textcolor{red}{rethreads the current state back into the continuation}. Note, without this second application, state would not be preserved for subsequent operations. 
+In the handler above, the \lstinline{get} operation returns a function which is parametrised by the current state \lstinline{s}. This function applies the continuation \lstinline{k}  to \lstinline{s}, providing a return value to the \lstinline{get} operation. The subsequent \lstinline{s} in the function body reapplies the state after the continuation is resumed. Note, without this second application, state would not be preserved for subsequent operations. 
 
-The \lstinline{put} clause returns a function as a parameter, representing the prior state, but ignores it. Since we are working with a single-cell state model, the prior state is irrelevant as will be overwritten by the new state value. The continuation is applied to \lstinline{()} (because a \lstinline{put} operation has no meaningful return value), and the resulting computation is run under the new state \lstinline{s}. This establishes \lstinline{s} as the new state for the remainder of the computation.
+The \lstinline{put} clause returns a function as a parameter, representing the prior state, but ignores it. Since we are working with a single-cell state model, the prior state is irrelevant as it will be overwritten by the new state value. The continuation is applied to \lstinline{()} (because a \lstinline{put} operation has no meaningful return value), and the resulting computation is run under the new state \lstinline{s}. This establishes \lstinline{s} as the new state for the remainder of the computation.
 
-Since \textit{state} has an associated equational theory, it can proved that this handler is correct by showing that it follows the four fundamental equational laws of state. These interaction laws provide a basis for reasoning about state and capture the essential behaviour of \lstinline{get} and \lstinline{put}, allowing us to reason about arbitrary sequences of \textit{state} operations. The laws are:
+Since \textit{state} has an associated equational theory, it can proved that this handler is correct by showing that it follows the four fundamental equational laws of state. These interaction laws provide a basis for reasoning about state and capture the essential behaviour of \lstinline{get} and \lstinline{put}, allowing us to reason about arbitrary sequences of \textit{state} operations. These laws are:
 
 \begin{enumerate}
     \item Put-Put 
@@ -1011,9 +1011,8 @@ We can prove that performing consecutive \lstinline{put} operations retains only
 \end{aligned}
 \]
 
-\underline{Left Hand Side}
-\vspace{-1em}
-
+{Left Hand Side}
+\vspace{-0.5em}
 \begin{align*}
 &\quad\equiv\quad (11) \\
 &\text{fun } \_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \textbf{with state handle } put(b)(y.C)/k] \\
@@ -1032,7 +1031,7 @@ We can prove that performing consecutive \lstinline{put} operations retains only
 \end{align*}
 
 
-\underline{Right Hand Side}
+{Right Hand Side}
 \[ 
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
@@ -1049,7 +1048,7 @@ LHS $\equiv$ RHS
 
 
 \subsection{Verifying the Implementation of Environment Variables}
-Following the method used in the single-cell state model described above, we can verify the concrete implementation of environment variables in our system. These handlers are a specialisation of the single-cell state which represents the current user. The operation \lstinline{Su(user')} corresponds to \lstinline{set(x)} andthe operation \lstinline{Ask()} corresponds to \lstinline{get()}:
+Following the method used in the single-cell state model described above, I can verify the concrete implementation of environment variables in my system. These handlers are a specialisation of the single-cell state which represents the current user. The operation \lstinline{Su(user')} corresponds to \lstinline{set(x)} and the operation \lstinline{Ask()} corresponds to \lstinline{get()}:
 
 \begin{figure}[H]
 \centering
@@ -1093,11 +1092,11 @@ Following the method used in the single-cell state model described above, we can
 \end{array}
 \]
 
-\caption{\textcolor{red}{Effect signature and handler implementation for environment variables in Tiny Unix}}
+\caption{Effect signature and handler implementations for environment variables in Tiny Unix}
 \label{fig:env-state-handler}
 \end{figure}
 
-In this system, \textit{state} is implemented somewhat differently. Rather than being passed as a parameter into each continuation, the handlers use an approach called \textbf{dynamic binding}. Here, the current user, scoped dynamically using a parameterised handler, allowing the same variable to be bound to different values in different contexts during the course of an execution. This advantage of this approach will become apparent when the concept of process management is discussed, but for now I will verify that this implementation follows the same state laws as before:
+In contrast to the simplified model, my system implements state differently. Rather than being passed as a parameter into each continuation, the handlers use an approach called \textit{dynamic binding}. This means that the current user state is dynamically scoped via a parameterised handler. This enables the same variable to hold different values across distinct dynamic contexts during execution. The advantage of this approach will become apparent later, when the concept of process management is discussed. For now I will verify that this implementation follows the same state laws as before:
 
 \begin{enumerate}
     \item Su-Su
@@ -1108,7 +1107,7 @@ In this system, \textit{state} is implemented somewhat differently. Rather than 
     
 
 I provide one example below. For an exhaustive list, see appendice \ref{environment-variable-proofs}
-\subsubsection*{Switch-user, Switch-user (Idempotence of Switch-user)}
+\subsubsection*{1. Switch-user, Switch-user (Idempotence of Switch-user)}
 
 
 \[
@@ -1148,9 +1147,11 @@ I provide one example below. For an exhaustive list, see appendice \ref{environm
 
 \subsection{Basic Multi-cell State}
 
-This system presented in this section represents a  simplification of the \textit{basic serial file system} described in Hillerström's "Tiny Unix". However, it does maintain most of the key functionality of the latter. 
+The system presented in this section represents a  simplification of the \textit{basic serial file system} described in Hillerström's \textit{Tiny Unix}. However, it does maintain most of the key functionality of the latter. 
 
-The handler for multi-cell state (\textit{see figure \ref{fig:multicell-handler}}) generalises the single-cell model introduced earlier, replacing the single memory cell with a \textbf{key-value map}. This \lstinline{multiState} handler works in a similar way to the single-cell handler. The primary difference being that \lstinline{s} is represented as a map rather than as a single-value. Note that in the set case, we cannot discard the current state as it must only update a single key-value pair and not completely overwrite the previous mappings. Both \textbf{lookup} and \textbf{update} are parametrised by the current state, \lstinline{s}.
+The handler for multi-cell state, shown in Figure \ref{fig:multicell-handler}, generalises the single-cell model introduced earlier, replacing the single memory cell with a \textit{key-value map}. 
+
+This \lstinline{multiState} handler works in a similar way to the single-cell handler, but differs in that \lstinline{s} is represented as a map rather than as a single-value. Note that, in the set case, we cannot discard the current state as it must only update a single key-value pair and not completely overwrite the previous mappings. Both \textit{lookup} and \textit{update} are parametrised by the current state, \lstinline{s}.
 
 \begin{figure}[H]
 \centering
@@ -1163,16 +1164,14 @@ The handler for multi-cell state (\textit{see figure \ref{fig:multicell-handler}
 \end{array}
 \right\}
 \]
-\caption{\textcolor{red}{Handler for multicell state}}
+\caption{Handler for multicell state}
 \label{fig:multicell-handler}
 \end{figure}
-
-
 
 In addition to the properties that hold in the single-cell state model, which hold for each key independently,  the multicell model has additional associated equational theories for the commutativity of operations on disjoint keys. These properties capture the independence of effects, which target separate parts of the state and are formalised by the following equivalences stated in Pretnar's \textit{The Logic and Handling of
 Algebraic Effects} \cite{Pretnar:2010}:
 \begin{enumerate}
-    \item Disjoint Write-Write Commutativity \[ \text{set(k\textsubscript{1},v\textsubscript{1});set(k\textsubscript{1},k\textsubscript{2}) $\equiv$ set(k\textsubscript{2},v\textsubscript{2});set(k\textsubscript{1},v\textsubscript{1})} \] 
+    \item Disjoint Write-Write Commutativity \[ \text{set(k\textsubscript{1},v\textsubscript{1});set(k\textsubscript{2},v\textsubscript{2}) $\equiv$ set(k\textsubscript{2},v\textsubscript{2});set(k\textsubscript{1},v\textsubscript{1})} \] 
     \item Disjoint Write-Read Independence \[ \text{set(k\textsubscript{1},v\textsubscript{1});get(k\textsubscript{2}) $\equiv$ get(k\textsubscript{2});set(k\textsubscript{1},v\textsubscript{1})} \] 
     \item Disjoint Read-Read Commutativity \[\text{get(k\textsubscript{1});get(k\textsubscript{2}) $\equiv$ get(k\textsubscript{2});get(k\textsubscript{1})} \] 
 \end{enumerate}
@@ -1182,26 +1181,25 @@ The above properties are vital as they allow for reasoning about different parts
 
 \subsection{Reasoning about Tiny Unix's File System}
 
-The \textit{Single UNIX Specification} \cite{SUSv4} does not provide an algebraic theory that conforming systems must follow. Rather, it relies on textual documentation describing the syntax and semantics for implementation. However, we can still reason about its intended functionality in terms of the \textit{state} laws above and the following system-specific exceptional/edge cases:
+The \textit{Single UNIX Specification} \cite{SUSv4} does not provide an algebraic theory that conforming systems must follow. Rather, it relies on textual documentation describing the syntax and semantics for implementation. However, we can still reason about its intended functionality in terms of the \textit{state} laws above and the following system-specific expected behaviour:
 
 \begin{itemize}
-    \item \textbf{IO operations} - performed on a file which doesn't exist
-    \item \textbf{File linking} - we can show how this operation can break the disjoint key-write commutativity property
-    \item \textbf{Dangling symbolic links} - where a link no longer points to a valid file
+    \item \textbf{IO operations} - performed on a file which doesn't exist.
+    \item \textbf{File linking} - we can show how this operation can break the disjoint key-write commutativity property.
+    \item \textbf{Dangling symbolic links} - where a link no longer points to a valid file.
 \end{itemize}
 
-Unfortunately, though, reasoning about the \textit{basic serial file system} in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply these equivalences, each small step  rapidly branched the number of computation paths that had to be followed due to the way different layers of the file system e.g. directories, Inodes, and data blocks, depend on one another's function calls. 
+Unfortunately, though, reasoning about the \textit{basic serial file system} in Hillerström's thesis proved to be too complicated in practice. Despite significant effort to apply these equivalences, each small step  rapidly branched the number of computation paths that had to be followed due to the way different layers of the file system (e.g. directories, inodes, and data blocks) depend on one another's function calls. 
 
-Unlike the prior simplified examples, reasoning about Hillerström's serial file system requires one to take into account the interactions between multiple nested data structures, such as the directory, the Inode list andthe data region. Each of these structures relied on invariants maintained by the others. For example, directory entries had to point to valid Inodes, Inodes had to reference valid and allocated data blocks, and both pointers had to remain consistent throughout execution. This tight coupling made it impractical to reason about each component in isolation.
+Unlike the prior simplified examples, reasoning about Hillerström's serial file system requires one to take into account the interactions between multiple nested data structures, such as the directory, the inode list and the data region. Each of these structures relied on invariants maintained by the others. For example, directory entries had to point to valid inodes, inodes had to reference valid and allocated data blocks, and both pointers had to remain consistent throughout execution. This tight coupling made it impractical to reason about each component in isolation.
 
 Operations such as file writing and creation involved multiple layers of functions and handlers for operations including \lstinline{get}, \lstinline{put}, \lstinline{lookup}, \lstinline{modify}, \lstinline{fileRW}, \lstinline{fopen}, \lstinline{fwrite}, \lstinline{withDefault} etc. The need to thread through and update each of these components made algebraic reasoning impractical.
 
 
 \section{Process Forking}
-
 Process forking introduces nondeterminism into the system, giving rise to a number of interesting algebraic properties. By first establishing the properties of nondeterminism in isolation, we establish a basis for understanding how forking composes with other effects in our system. In subsequent sections, we will see that forking breaks many of the algebraic properties that held in previous sequential contexts.
 
-Whilst the algebraic structure of forking is defined in an effect handler, the operational semantics are defined by our scheduler. Since the scheduler determines the execution order, from the perspective of a single process, the system will appear non-deterministic, i.e. it cannot be known when or how other processes will affect the overall state of the system. The scheduler can adopt different policies, e.g. fairness and liveness, which can affect the execution order, putting them outwith our algebra.
+Whilst the algebraic structure of forking is defined in an effect handler, its runtime behaviour is influenced by our scheduler. Since the scheduler determines the execution order, from the perspective of a single process, the system will appear non-deterministic, i.e. it cannot be known when or how other processes will affect the overall state of the system. The scheduler can adopt different policies, e.g. fairness and liveness, which can affect the execution order, putting them outwith our algebra.
 
 
 \subsection{Equational Theories of Nondeterminism}
@@ -1223,7 +1221,7 @@ Abstract notions of nondeterminism can be modelled by an algebraic structure kno
 
 
 
-However, the semi-lattice model of nondeterminism becomes problematic when one attempts to implement concrete algorithms that resolve nondeterministic choices, such as those found in our scheduler. In this case, the symmetry and idempotency assumed for nondeterministic operations by semi-lattices are too strong to hold. Associativity holds in the presence of any other effect \cite{NotByEquationsAlone}. \textcolor{red}{ref?}
+However, the semi-lattice model of nondeterminism becomes problematic when one attempts to implement concrete algorithms that resolve nondeterministic choices, such as those found in our scheduler. In this case, the symmetry and idempotency assumed for nondeterministic operations by semi-lattices are too strong to hold.
 
 
 
@@ -1249,7 +1247,7 @@ However, the semi-lattice model of nondeterminism becomes problematic when one a
 \end{figure}
 
 
-In Hillerström's implementation of nondeterminism (Figure  \ref{nondetImplementation}), forking isn't commutative and doesn't have an identity. This makes sense for idempotency, as two identical processes are clearly not equivalent to one process. Commutativity is not valid either, as the order in which the processes are returned could affect observational behaviour when they are executed by the scheduler.
+In our implementation of nondeterminism, shown in Figure  \ref{nondetImplementation}, forking isn't commutative and doesn't have an identity. This makes sense for idempotency, as two identical processes are clearly not equivalent to one process. Commutativity is not valid either, as the order in which the processes are returned could affect observational behaviour when they are executed by the scheduler.
 
 This problem is illustrated by  O. Kiselyov et al in their paper \textit{Not by equations alone: Reasoning with extensible effects} \cite{kiselyov2021not}. They show that equational theories can often exert unrealistic constraints on their concrete implementations and cite nondeterminism as an example of this problem.
 
@@ -1324,7 +1322,7 @@ Server forks Worker 1
     \label{fig:process-restructuring}
 \end{figure}
 
-Structural properties describe how computations may be grouped and rearranged without changing the observable behaviour of a program. This makes them especially useful for restructuring code, as they allow us to transform the shape of a program without affecting its behaviour. In particular, associativity enables us to restructure nested computations, revealing opportunities for tree-based parallel execution, allowing nested computations to be restructured into a more balanced structure (\textit{see figure  \ref{fig:process-restructuring}}).
+Structural properties describe how computations may be grouped and rearranged without changing the observable behaviour of a program. This makes them especially useful for restructuring code, as they allow us to transform the shape of a program without affecting its behaviour. In particular, associativity enables us to restructure nested computations, revealing opportunities for tree-based parallel execution, allowing nested computations to be restructured into a more balanced structure, see Figure  \ref{fig:process-restructuring}.
 
 
 
@@ -1351,7 +1349,7 @@ if Fork()
  else c
 }
 
-\underline{Left Hand Side}
+{Left Hand Side}
 \begin{longtable}{@{}l@{}}
 \quad$\equiv$\quad (11) \\[5pt]
 \textbf{resume } True \texttt{ ++ } \textbf{resume } False\ [()/x,\ fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } a \\
@@ -1379,7 +1377,7 @@ a \texttt{ ++ } (b \texttt{ ++ } c) \\
 
 
 
-\underline{Right Hand Side}
+{Right Hand Side}
 
 \vspace{-1em}
 
@@ -1421,14 +1419,13 @@ a \texttt{ ++ } (b \texttt{ ++ } c) \\
 \section{State Models and Handler Composition}
 In the previous sections I reasoned about state in a  sequential setting and introduced the forking operation and the concept of nondeterminism. I now turn to the question of how these two effects interact when composed. 
 
-The order of composition of the \textit{state}  and \textit{nondeterminism} handlers (figures \ref{fig:state-handler} and \ref{nondetImplementation}) has a significant impact on the semantics of stateful computations. There are two possible models of \textit{state}  depending on this ordering: 
+The order of composition of the state  and nondeterminism handlers, shown in Figures \ref{fig:state-handler} and \ref{nondetImplementation}, has a significant impact on the semantics of stateful computations. There are two possible models of state  depending on this ordering: 
 \begin{itemize}
-    \item \textbf{Local State} (outer nondeterminism, inner state) - here, each nondeterministic branch maintains its own locally scoped, independent state, akin to local variables within a program.  The state is tied to the process and only lasts for the duration of the process. This is similar to the concept of \textit{backtrackable} state \cite{backtrackable}, where a change to the state of a process is automatically undone when the computation path finishes. 
-    \item \textbf{Global State} (outer state, inner nondeterminism) - here, the same state is shared among all branches of a nondeterministic computation in a manner similar to that  of a global file system. As a result, branches can interfere with one another when reading and writing to the same shared state.
+    \item \textit{Local State} (outer nondeterminism, inner state) - here, each nondeterministic branch maintains its own locally scoped, independent state, akin to local variables within a program.  The state is tied to the process and only lasts for the duration of the process. This is similar to the concept of \textit{backtrackable} state \cite{backtrackable}, where a change to the state of a process is automatically undone when the computation path finishes. 
+    \item \textit{Global State} (outer state, inner nondeterminism) - here, the same state is shared among all branches of a nondeterministic computation in a manner similar to that  of a global file system. As a result, branches can interfere with one another when reading and writing to the same shared state.
 \end{itemize}
 
-
-Much work has been done to describe the properties that arise from the composition of nondeterminism and state when using \textit{Monads} \cite{monads}. As I will now demonstrate the composition of my implementations of nondeterminism and state handlers have exhibit the same corresponding properties. 
+Much work has been done to describe the properties that arise from the composition of nondeterminism and state when using \textit{Monads} \cite{monads}. As I will now demonstrate the composition of my implementations of nondeterminism and state handlers exhibit the same properties. 
 
 I now describe the properties of global and local state as defined in the latest version of the \textit{Open Group Unix Specifications} \cite{posix}. My goal here is to show how these behaviours are captured within my effect handler model. I will contrast my implementation with conventional imperative approaches, typically used to implement similar functionality in Unix-like systems. 
 
@@ -1532,7 +1529,7 @@ Tang and Schrijvers \cite{tang2025high} show how their \textit{backtrackable sta
 
 \begin{figure}[H]  % Use [H] to force exact placement, or [htbp] for flexible
   \centering
-  \includegraphics[width=1\textwidth]{distributivity.png}  % Adjust width & filename
+  \includegraphics[width=0.9\textwidth]{distributivity.png}  % Adjust width & filename
   
 \end{figure}
 
