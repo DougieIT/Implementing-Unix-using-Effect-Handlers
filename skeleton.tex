@@ -218,11 +218,10 @@ In languages like Java, chaining effectful operations can obscure where effects 
 In the context of functional programming, effect handlers provide a simple, lightweight method for managing side effects. They serve as a viable alternative to monads, but offer a more flexible approach. Unlike monads, which can become rigid once defined, effect handlers allow for greater modification. Additionally, they simplify the combination of multiple side effects, avoiding the complexity of monad transformers. In many cases, effect handlers also offer better performance by eliminating the overhead of repeatedly wrapping and unwrapping values within monadic structures. 
 
 
-\section{Syntax for Effect Handlers}
+\section{Type-and-Effect Systems}
 
-\subsection{Effect System}
-Effect Handler oriented languages have what is known as an effect system \cite{bauer_effect_2013}. This describes the computational effects that may occur when a piece of code is executed. An effect system is typically an extension of a type system. Effect systems can be used to enforce effect safety, ensuring all effects are handled and functions only perform the side effects denotd in their effect signature
-
+Effect handler oriented languages have what is known as a \textit{type-and-effect} system \cite{bauer_effect_2013}. This means that a computation is assigned both a return type and a set of effects it may cause \cite{kammar2014algebraic}. Handlers eliminate effects so they are no longer visible outside the wrapped computation.
+This feature is known as \textit{non-monotonicity}. Shown below is an example of the type-and-effect system being used in Koka:
 
 
 \lstset{
@@ -234,11 +233,7 @@ backgroundcolor=\color{gray!5}, % Set background color
 }
 
 
-
-
-\subsection{Effect Type}
-An effect type provides an explicit way to denote the side effects that a function performs. Each effect type can have multiple effectful operations. Each effectful operation can have parameters with value types and a valued return type. Note that operations can also produce effects and therefore have effect types.
-
+We first define an effect \lstinline{exception} with a single operation \lstinline{exn} which is parameterised by a string: 
 \begin{lstlisting}
 effect exception
     ctl exn(error_msg : string) : a 
@@ -246,6 +241,23 @@ effect exception
 fun safe_div (x : int, y: int) : exn int
     if y == 0 then exn("div by zero") else return x/y
 \end{lstlisting}
+
+We then define an effect handler for the exception effect. Although the \lstinline{main} function uses an effectful operation, the \lstinline{exception} effect does not appear in its effect row because it is handled by \lstinline{exception_handler}:
+
+\begin{lstlisting}
+
+fun exception_handler(m : () -> <exception> option<T> )
+    with handler
+        ctl exn(e) -> None
+        return x -> Some(x)
+    m()
+
+fun main() 
+    with exception_handler
+    safe_div(10/5)          // Evalutes to Some(2)
+    safe_div(1/0)           // Evaluates to None
+\end{lstlisting}
+
 
 Pure functions use the unit effect type. This shows it has no side effects. 
 
@@ -256,16 +268,16 @@ fun add (x: Int, y: int) : () int {
 \end{lstlisting}
 
 \section{Shallow vs Deep Handlers}
-There are two approaches to implementing effect handlers in a effect-oriented language: \textit{deep handlers} and \textit{shallow handlers}. These differ in the way that they handle continuations.
+There are two approaches to implementing effect handlers in a effect handler oriented language: \textit{deep handlers} and \textit{shallow handlers}. These differ in the way that they handle continuations.
 
 A deep handler  implicitly reinstalls itself on all of its continuations. This means that when a deep handler is applied, \textbf{all} subsequent effects in its continuations are handled by that same handler\cite{hillerstrom_foundations_nodate}. 
 
 By contrast, a shallow handler \cite{ryu_shallow_2018} only manages the \textbf{first} effect caused by a computation. In this scenario, any resumed continuation is no longer wrapped by the handler, so the programmer must provide an additional handler to handle any further effects the continuations may perform.
 
-Both deep and shallow handlers can simulate each other's behaviour \cite{hillerstrom2018shallow}. However, it may make more sense to use one over the other in certain contexts. Note, most languages only support one or the other. In this paper, my focus will be primarily on deep handlers.
+Both deep and shallow handlers can simulate each other's behaviour \cite{hillerstrom2018shallow}. However, it may make more sense to use one over the other in certain contexts. Note, most languages only support one or the other. In this paper, I will primarily focus on deep handlers.
 
 \subsection{Effectful Programs as Computational Trees}
-Effectful programs can be thought of as forming a \textit{computational tree}, with the finished computations representing the leaves, i.e. pure return values, and the effects representing the nodes. Each node requires an effect handler for interpretation, and each effect handler receives a first class syntactic representation of the continuation, known as a \textit{resumption}. 
+Effectful programs can be thought of as forming a \textit{computational tree}, with the finished computations representing the leaves, i.e. pure return values, and the effects representing the nodes. Each node requires an effect handler for interpretation, and each effect handler receives a first class syntactic representation of the delimited continuation, known as a \textit{resumption}. 
 
 Effect handlers allow for branching depending on how they use their continuations. A handler may: 
 \begin{itemize}
@@ -275,41 +287,39 @@ Effect handlers allow for branching depending on how they use their continuation
 \end{itemize}
 
 
-The difference between shallow and deep handlers can be illustrated by showing how each evaluates the computational tree differently.
+The difference between shallow and deep handlers can be illustrated by showing how each evaluates the computational tree.
 
-A deep handler is analogous to a \textit{fold} over a computational tree \cite{hillerstrom_foundations_nodate}. The deep handler provides an interpretation for each operation it handles given its leaves and subtrees. Like a fold, a deep handler traverses the entire computation tree, recursively handling both the current operation and each operation within its continuations. This makes deep handlers easy to reason about, as we can assume the way that the operation will be interpreted will be consistent, giving it an \textit{algebraic structure}.
+A deep handler is analogous to a \textit{fold} over a computational tree \cite{hillerstrom_foundations_nodate}. The deep handler provides an interpretation for each operation it handles given its leaves and subtrees. Like a fold, a deep handler traverses the entire computation tree, recursively handling both the current operation and each operation within its continuations. This makes deep handlers easy to reason about, as we can assume the way that the operation will be interpreted will be consistent, giving it an \textit{algebraic structure}. 
 
 However, a shallow handler does not recurse like this: the handler is only applied to the first operation it sees. This means the handler must be explicitly reapplied to its continuations if it is to interpret their subsequent operations. This makes formal reasoning more difficult; however,  it does provide more flexible control over how effects are handled.
 
-\section{Reasoning}
-Continuing on with our analogy of effectful programs as computational trees, we can isolate parts of the tree as self contained sub programs and reason about them independently. 
+\section{Reasoning about Effects with Deep Handlers}
+Continuing with the analogy of effectful programs as computational trees, we can isolate parts of the tree as self-contained sub programs and reason about them independently. 
 
+As deep handlers correspond to a fold over the entire computation, we can assume that every effect gets interpreted consistently by the same handling clause. This consistency means that if we prove a certain rewrite law, we can apply it anywhere in that computation. This is an example of \textit{structural induction} allowing us to rewrite subtrees.
 
-As deep handlers correspond to a fold over the entire computation, every effect gets interpreted consistently by the same handling clause. This consistency means that if we prove a certain rewrite law we can apply it anywhere in that computation. 
-
-Certain standard algebraic effects (state, non-determinism, ...) 
+Some standard algebraic effects, such as state and nondeterminism, come with associated equational theories which allow us to verify their correct implementation algebraically. This is opposed to imperative programs, where effects don't have an equational theory and are entirely determined by their low-level operational interpretation.
 
 \section{Unix}
 The first edition of the Unix operating system was released by Bell Labs in 1971 \cite{ritchie1974unix}. Written in the C programming language, it was one of the first systems to prioritise portability across hardware platforms, making it extremely popular and influential \cite{blair1985critique}.
 
-Unix was created to provide a portable, multi-user, multi-tasking system and introduced several fundamental innovations including: a hierarchical file system; a uniform \textit{“everything is a file”} interface; and offered powerful process management through system calls like \textit{fork} and \textit{exec}.  It promoted simplicity, modularity, and composition, principles that distinguished it from the large, monolithic systems of its time and that continue to influence modern operating systems like Linux \cite{gancarz2003linux}.
+Unix was created to provide a portable, multi-user, multi-tasking system and introduced several fundamental innovations including: a hierarchical file system; a uniform “everything is a file” model; and offered powerful process management through system calls like \textit{fork} and \textit{exec}.  It promoted simplicity, modularity, and composition, principles that distinguished it from the large, monolithic systems of the time. The influence of this philosophy can still be found in modern operating systems such as Linux \cite{gancarz2003linux}.
 
-The “everything is a file” model provides a consistent interface for interacting with system resources. Abstract operations, such as system calls, are interpreted by handlers that act as self-contained modules, assigning specific behaviours for I/O, process control, or scheduling. This modular design reflects the Unix philosophy\cite{raymond2003art} of building systems from small, composable components.
+The “everything is a file” model provides a consistent interface for interacting with system resources. Abstract operations, such as system calls, are interpreted by self-contained modules, assigning specific behaviours for I/O, process control, and scheduling. This modular design reflects the \textit{Unix philosophy} of building systems from small, composable components \cite{raymond2003art}.
 
-What makes Unix interesting from a control flow perspective is the rich set of mechanisms it provides for suspending, resuming and branching computations\cite{stevens2013advanced}. Process scheduling can exhibit non-linear control flow, allowing computations to split into separate execution paths and forcing them to be paused.
+What makes Unix interesting from a control flow perspective is the rich set of mechanisms it provides for suspending, resuming and branching computations\cite{stevens2013advanced}. Process scheduling exhibits non-linear control flow, allowing computations to split into separate execution paths and allowing for them to be suspended mid-execution.
 
-Alongside complex control flow, Unix also introduces subtle scoping challenges. It must be able to support both global and local scoping for state. Processes must have independent access to their own resources and must be able to duplicate their own state for their children \cite{aiken2006deconstructing}. Importantly, the same variable name or identifier may refer to different resources in different processes, enabling compositional abstractions like piping and redirection. They must of course also be able to access global state represented by the file system.
+Alongside complex control flow, Unix introduces subtle scoping challenges, such as supporting both global and local scoping for state. In Unix, processes must have independent access to their own resources and must duplicate their state for their children \cite{aiken2006deconstructing}. Importantly, the same variable name or identifier may refer to different resources in different processes, enabling compositional abstractions like piping and redirection. Processes must of course, also be able to access global state represented by the file system.
 
-Unix presents exactly the kind of challenges that effect handlers excel at solving: control flow is non-trivial, state is both local and global, and system calls are abstract interfaces that demand interpretation. These features make Unix an ideal case for demonstrating the power of effect handlers, and many papers on effect handlers use Unix features to demonstrate the strengths of the effect handlers.
-
+Unix presents exactly the kind of challenges that effect handlers are excellent for solving: control flow is non-trivial, state is both local and global, and system calls are abstract interfaces that demand interpretation. These features make Unix an ideal case for demonstrating the power of effect handlers, and many papers use Unix primitives to showcase their strengths.
 
 
 \section{Evaluating Previous work}
-In his 2021 paper \textit{Foundations for Programming and Implementing Effect Handlers} \cite{hillerstrom_foundations_nodate}, Daniel Hillerström implemented a theoretical implementation of Unix. He draws an analogy between operating systems and effect handlers, arguing that both interpret a series of abstract invocations. In the case of the OS, these are system calls; in the case of effect handlers, these are operations. The composition of effect handlers, which he describes as “tiny operating systems”, can provide semantics for a Unix implementation. In this dissertation, I use Koka to create a concrete implementation of the abstract syntax Hillerström used in his paper. I will then use equational theory and algebraic equivalences to show my implementation is correct.
+In his 2021 paper \textit{Foundations for Programming and Implementing Effect Handlers} \cite{hillerstrom_foundations_nodate}, Daniel Hillerström implemented a theoretical implementation of Unix. He draws an analogy between operating systems and effect handlers, arguing that both interpret a series of abstract invocations. In the case of the OS, these are system calls; in the case of effect handlers, these are operations. The composition of effect handlers, which he describes as like “tiny operating systems”, can provide semantics for a Unix implementation. In this dissertation, I use Koka to create a concrete implementation of the abstract syntax Hillerström used in his paper. I will then use equational theory and algebraic equivalences to show that my implementation is correct.
 
 There are several papers which examine reasoning about effect handlers. Pretnar's \textit{The Logic and Handling of Algebraic Effects} \cite{Pretnar:2010} uses algebraic equations to reason about abstract properties of state, exceptions and nondeterminism. McLaughlin's PhD thesis \textit{Relational Reasoning for Effects and Handlers} \cite{McLaughlin2020} uses automated reasoning techniques to verify the correctness of an effect handler implementation for Unix-style pipes. 
 
-However, the most relevant for this dissertation is \textit{Not by equations alone: Reasoning with extensible effects} by Oleg Kiselyov, Shin-Cheng Mu and Amr Sabry \cite{kiselyov2021not}, which outlines the limitations of using equational laws to reason about effectful programs. They show how composition can break down algebraic laws which held in isolation. \textcolor{red}{It suggests stronger notions of congruence, i.e. proving expressions are equivalent under different contexts are required.}
+However, the most relevant paper to this dissertation is \textit{Not by equations alone: Reasoning with extensible effects} by Oleg Kiselyov, Shin-Cheng Mu and Amr Sabry \cite{kiselyov2021not}. This paper outlines the limitations of using equational laws to reason about effectful programs and shows how composition can break down algebraic laws which hold in isolation. This will be relevant to our dissertation as I will attempt to prove the algebraic properties found in my Unix system, which will be implemented with composed effect handlers.
 
 
 
@@ -929,30 +939,30 @@ When composed with other effects, exceptions can break the algebraic properties 
 
 The behaviour of an \lstinline{exit} operation is described by the absorption property. When \lstinline{exit} is called within a computation, any continuation is rendered irrelevant. The absorption property of \lstinline{Exit n} is shown below:
 
-\equivalenceStatement{status}{Exit (n)(y.C)}{status}{Exit(n)(y.D)}
+\equivalenceStatement{status}{Exit (v)(y.C)}{status}{Exit(v)(y.D)}
 
 
 {\large \textbf{Proof of Absorption}}
 
 {Left Hand Side}
-
+\vspace{0em}
 \[
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
-v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } C/k] \\[5pt]
+n [v/n, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } C/k] \\[5pt]
 \quad\equiv\quad (\text{subst}) \\[5pt]
-n
+v
 \end{array}
 \]
 
 {Right Hand Side}
-
+\vspace{-0.2em}
 \[
 \begin{array}{l}
 \quad\equiv\quad (11) \\[5pt]
-v [n/v, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } D/k] \\[5pt]
+n [v/n, \text{fun } y \rightarrow \text{\textbf{with} status \textbf{handle} } D/k] \\[5pt]
 \quad\equiv\quad (\text{subst}) \\[5pt]
-n
+v
 \end{array}
 \]
 
@@ -1114,7 +1124,7 @@ I provide one example below. For an exhaustive list, see appendice \ref{environm
 
 \renewcommand{\arraystretch}{1}
 \begin{longtable}{@{}l@{}}
-\textbf{sessionmgr} $\langle \mathit{user}_i,\; \textbf{Su}(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C)) \rangle$ \\[5pt]
+{sessionmgr} $\langle \mathit{user}_i,\; \textbf{Su}(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C)) \rangle$ \\[5pt]
 
 \hspace*{2em} $\equiv$ (apply) \\[5pt]
 \textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
@@ -1233,7 +1243,7 @@ However, the semi-lattice model of nondeterminism becomes problematic when one a
 \begin{figure}[H]
 \centering
 \[
-\mathsf{fork} : \{ \mathsf{Fork} : 1 \rightarrow \mathsf{Bool} \}
+\mathsf{Fork} := \{ \mathsf{Fork} : 1 \rightarrow \mathsf{Bool} \}
 \]
 \vspace{-1em}
 \[
@@ -1244,7 +1254,7 @@ However, the semi-lattice model of nondeterminism becomes problematic when one a
 \end{array}
 \right\}
 \]
-\caption{Tiny Unix's implementation of nondeterminism}
+\caption{An implementation of nondeterminism}
 \label{nondetImplementation}
 \end{figure}
 
@@ -1331,88 +1341,82 @@ Structural properties describe how computations may be grouped and rearranged wi
 \vspace{1em}
 \textbf{\large{Proof of Associativity}}
 
-In the continuation passing style, we  write the associativity property of \lstinline{nondet} as:
-\equivalenceStatement{nondet}
-{
-if Fork() then
-if Fork() 
-a 
-else 
-b 
-else 
-c
-}
-{nondet}
-{
-if Fork() then a 
-else 
-if Fork() 
- then b 
- else c
-}
+In the continuation passing style, where a,b and c represent continuations, we  write the associativity property of \lstinline{nondet} as:
+\[
+\begin{array}{lcl}
+
+\textbf{with } \text{nondet } \textbf{handle} &
+\quad \\ \quad \text{Fork()}(r.\ \textbf{if } r\ \textbf{then } a\ \textbf{else } (\text{Fork()}(s.\ \textbf{if } s\ \textbf{then } b\ \textbf{else } c)))
+& \\ \quad\equiv \\
+\textbf{with } \text{nondet } \textbf{handle} &
+\quad \\ \quad \text{Fork()}(r.\ \textbf{if } r\ \textbf{then } (\text{Fork()}(s.\ \textbf{if } s\ \textbf{then } a\ \textbf{else } b))\ \textbf{else } c)
+\end{array}
+\]
 
 {Left Hand Side}
 \begin{longtable}{@{}l@{}}
-\quad$\equiv$\quad (11) \\[5pt]
-\textbf{resume } True \texttt{ ++ } \textbf{resume } False\ [()/x,\ fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } a \\
-\quad \textbf{else } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c)) \;/\; k] \\[5pt]
+\quad$\equiv$ (11) \\
+\textbf{resume } True \texttt{ ++ } \textbf{resume } False \\
+\quad [()/x,\ fun r $\rightarrow$ \textbf{with } nondet \textbf{handle if }r\textbf{ then } a \textbf{ else } s
+ Fork()(s . \textbf{if } s \textbf{ then } b \\ \quad \textbf{ else } c) /resume] \\
 
-\quad$\equiv$\quad (\text{subst}) \\[5pt]
-fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } a \textbf{ else } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c))\ True \\
-\text{++} \\
-fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } a \textbf{ else } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c))\ False \\[5pt]
+\quad$\equiv$ (subst) \\
+fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } a \textbf{ else } Fork()(s. \textbf{if } s \textbf{ then } b \textbf{ else } c)\ True \\
+\quad\texttt{++} \\
+fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } a \textbf{ else } Fork()(s . \textbf{if } s \textbf{ then } b \textbf{ else } c)\ False \\
 
-\quad$\equiv$\quad (8, evaluate) \\[5pt]
-\textbf{with } nondet \textbf{ handle } a \texttt{ ++ } \textbf{with } nondet \textbf{ handle } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c) \\[5pt]
+\quad$\equiv$ (8, evaluate) \\
+\textbf{with } nondet \textbf{ handle } a \texttt{ ++ } \textbf{with } nondet \textbf{ handle } Fork()(s . \textbf{if } s \textbf{ then } b \textbf{ else } c) \\
 
-\quad$\equiv$\quad (11) \\[5pt]
-a \texttt{ ++ }(resume True \texttt{ ++ } resume False\ [()/x,\ fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c \;/\; k]) \\[5pt]
+\quad$\equiv$ (11) \\
+a \texttt{ ++ } (\textbf{resume } True \texttt{ ++ } \textbf{resume } False 
+\quad [()/x,\ fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c /resume]) \\
 
-\quad$\equiv$\quad (\text{subst}) \\[5pt]
+\quad$\equiv$ (subst) \\
 a \texttt{ ++ } (fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c)\ True \\
-\texttt{++} \\
-(fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c)\ False \\[5pt]
+\quad\texttt{++} \\
+(fun s $\rightarrow$ \textbf{if } s \textbf{ then } b \textbf{ else } c)\ False \\
 
-\quad$\equiv$\quad (8, evaluate) \\[5pt]
+\quad$\equiv$ (8, evaluate) \\
 a \texttt{ ++ } (b \texttt{ ++ } c) \\
 \end{longtable}
+
 
 
 
 {Right Hand Side}
 
 \begin{longtable}{@{}l@{}}
-\hspace*{1em} $\equiv$ (11) \\[5pt]
-\textbf{resume } True \texttt{ ++ } \textbf{resume } False\ [()/x,\ fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } Fork() \\
-\hspace*{3em} (s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c) \;/\; k] \\[5pt]
+\quad$\equiv$ (11) \\
+\textbf{resume } True \texttt{ ++ } \textbf{resume } False \\
+\quad [()/x,\ fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \\ \quad \textbf{ else } c /resume] \\
 
-\hspace*{1em} $\equiv$ (subst) \\[5pt]
-fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c)\ True \\
+\quad$\equiv$ (subst) \\
+fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c\ True \\
 \texttt{++} \\
-fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle } (\textbf{if } r \textbf{ then } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c)\ False \\[5pt]
+fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \textbf{ else } c\ False \\
 
-\hspace*{1em} $\equiv$ (8,\ evaluate) \\[5pt]
-\textbf{with } nondet \textbf{ handle } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \texttt{ ++ } \textbf{with } nondet \textbf{ handle } c \\[5pt]
+\quad$\equiv$ (8, evaluate) \\
+\textbf{with } nondet \textbf{ handle } Fork()(s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b) \texttt{ ++ } \textbf{with } nondet \textbf{ handle } c \\
 
-\hspace*{1em} $\equiv$ (11) \\[5pt]
-(\textbf{resume } True \texttt{ ++ } \textbf{resume } False\ [()/x,\ fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b \;/\; k]) \texttt{ ++ } c \\[5pt]
+\quad$\equiv$ (11) \\
+(\textbf{resume } True \texttt{ ++ } \textbf{resume } False 
+\quad [()/x,\ fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b /resume]) \\ \quad \texttt{ ++ } c \\
 
-\hspace*{1em} $\equiv$ (subst) \\[5pt]
-(fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ True \texttt{ ++ } (fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ False \texttt{ ++ } c \\[5pt]
+\quad$\equiv$ (subst) \\
+(fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ True  \texttt{ ++ } (fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ False \texttt{ ++ } c \\
 
-\hspace*{1em} $\equiv$ (8,\ evaluate) \\[5pt]
-(fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ True \texttt{ ++ } (fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ False \texttt{ ++ } c \\[5pt]
+\quad$\equiv$ (8, evaluate) \\
+(fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ True \texttt{ ++ } (fun s $\rightarrow$ \textbf{if } s \textbf{ then } a \textbf{ else } b)\ False \texttt{ ++ } c \\
 
-\hspace*{1em} $\equiv$ (evaluate) \\[5pt]
-(a \texttt{ ++ } b) \texttt{ ++ } c
+\quad$\equiv$ (evaluate) \\
+(a \texttt{ ++ } b) \texttt{ ++ } c \\
 \end{longtable}
 
 
 
+LHS = RHS
 
-\[
-\textbf{LHS} = \textbf{RHS} \quad \text{and} \quad a ++ (b ++ c) \equiv (a ++ b) ++ c
-\]
 
 
 
@@ -1493,33 +1497,37 @@ The placement of the state handler inside the nondeterminism handler ensures tha
 
 
 \begin{longtable}{@{}l@{}}
-\textbf{with } nondet handle \\
-\quad \textbf{with } state handle \\
-\quad\quad set(a)(x. return 0) \, ++ \, set(b)(y. return 0) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad \textbf{with } state \textbf{ handle} \\
+\quad\quad \textbf{with } status \textbf{ handle} \\
+\quad\quad\quad get()(x. Exit()(y. C)) \\
+
+\quad$\equiv$ (12) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad \textbf{with } state \textbf{ handle} \\
+\quad\quad get()(x. \textbf{with } status \textbf{ handle } Exit(v)(y. C)) \\
 
 \quad$\equiv$ (11) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun s $\rightarrow$ (k\ s)\ s\ [fun x $\rightarrow$ \textbf{with } state, status \textbf{ handle } Exit(v)(y. C) / k] \\
 
-\textbf{with } nondet handle \\
-\quad fun \_ $\rightarrow$ (k())s \ [a/s,\ fun y $\rightarrow$ \textbf{with } state handle return 0]\\
-\quad\quad ++ \\
-\quad fun \_ $\rightarrow$ (k())s \ [b/s,\ fun y $\rightarrow$ \textbf{with } state handle return 0] 
 \quad$\equiv$ (subst) \\
-\textbf{with } nondet handle \\
-\quad fun \_ $\rightarrow$ (fun y $\rightarrow$ \textbf{with } state handle return 0)() \ a \\
-\quad\quad ++ \\
-\quad fun \_ $\rightarrow$ (fun y $\rightarrow$ \textbf{with } state handle return 0)() \ b \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun s $\rightarrow$ (fun x $\rightarrow$ \textbf{with } state, status \textbf{ handle } Exit(v)(y. C)\ s)\ s \\
+
 \quad$\equiv$ (8) \\
-\textbf{with } nondet handle \\
-\quad fun \_ $\rightarrow$ (\textbf{with } state handle return 0) \ a \\
-\quad ++ \\
-\quad fun \_ $\rightarrow$ (\textbf{with } state handle return 0) \ b \\
-\quad$\equiv$ (10) \\
-\textbf{with } nondet handle \\
-\quad fun \_ $\rightarrow$ 0 \ a \quad ++ \quad fun \_ $\rightarrow$ 0 \ b \\
-\quad$\equiv$ (apply) \\
-\textbf{with } nondet handle \\
-\quad 0 ++ 0 \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun s $\rightarrow$ \textbf{with } state, status \textbf{ handle } Exit(v)(y. C[s/x])\ s \\
+
+\quad$\equiv$ (11) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun s $\rightarrow$ \textbf{with } state \textbf{ handle } n \\
+\quad\quad [v/n,\ fun y $\rightarrow$ \textbf{with } status \textbf{ handle } C / k] 
+\\ \quad$\equiv$ (subst) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun s $\rightarrow$ \textbf{with } state \textbf{ handle } v \\
 \end{longtable}
+
 
 
 \subsubsection{State Inheritance} 
@@ -1542,26 +1550,34 @@ In line with the above properties, I can demonstrate that my handlers allow stat
 {\large{\textbf{Proof - \textit{Get} Distributing Over \textit{Fork}}}}
 
 \begin{longtable}{@{}l@{}}
+\textbf{with} nondet \textbf{handle} \\ \quad
+\textbf{with} state \textbf{handle} \\
+\quad\quad get()(x.Fork()(y.C) \\
 \quad$\equiv$ (11) \\
+\textbf{with} nondet \textbf{handle} \\ \quad
 fun s $\rightarrow$ (k\ s)\ s \ [fun x $\rightarrow$ \textbf{with } state handle Fork()(y.C)/k] \\
 \quad$\equiv$ (subst) \\
+\textbf{with} nondet \textbf{handle} \\ \quad
+
 fun s $\rightarrow$ (fun x $\rightarrow$ \textbf{with } state handle Fork()(y.C)\ s)\ s \\
 \quad$\equiv$ (8) \\
+\textbf{with} nondet \textbf{handle} \\ \quad
 fun s $\rightarrow$ \textbf{with } state handle Fork()(y.C)[s/x] \\
 \quad$\equiv$ (12) \\
+\textbf{with} nondet \textbf{handle} \\ \quad
+
 fun s $\rightarrow$ Fork()(y.\ \textbf{with } state handle C[s/x])\ s \\
 \quad$\equiv$ (11) \\
 fun s $\rightarrow$ \textbf{resume } True \texttt{ ++ } \textbf{resume } False\ [fun y $\rightarrow$ \textbf{with } nondet, state handle C[s/x]] \\
 \quad$\equiv$ (subst) \\
-fun s $\rightarrow$ \\
+fun s $\rightarrow$ 
 \quad\quad fun y $\rightarrow$ \textbf{with } nondet, state handle C[s/x]\ True \\
-\quad\quad\texttt{++} \\
-\quad\quad fun y $\rightarrow$ \textbf{with } nondet, state handle C[s/x]\ False \\
+\quad\quad\quad\quad\quad\texttt{ ++} 
+ fun y $\rightarrow$ \textbf{with } nondet, state handle C[s/x]\ False \\
 \quad$\equiv$ (8) \\
-fun s $\rightarrow$ \\
-\quad\quad \textbf{with } nondet, state handle C[s/x,\ True/y] \\
-\quad\quad\texttt{++} \\
-\quad\quad \textbf{with } nondet, state handle C[s/x,\ False/y] \\
+fun s $\rightarrow$ \quad \textbf{with } nondet, state handle C[s/x,\ True/y] \\
+\quad\quad\quad\quad \texttt{ ++} 
+ \textbf{with } nondet, state handle C[s/x,\ False/y] \\
 \end{longtable}
 
 
@@ -1601,29 +1617,29 @@ The limits of algebraic reasoning for global state evaluation are shown below. I
 \quad \textbf{with } nondet \textbf{ handle} \\
 \quad\quad Fork()(p.\textbf{if } p \textbf{ then } set(x)(a.C\textsubscript{1}) \textbf{ else } set(y)(b.C\textsubscript{2})) \\
 \quad$\equiv$ (11) \\
-\\ 
+ 
 \textbf{with } state \textbf{ handle} \\
 \quad \textbf{resume } True \text{ ++ } \textbf{resume } False \\
 \quad [()/v,\ \text{fun } r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)] \\
-\\
+
 \quad$\equiv$ (\text{subst}) \\
 \textbf{with } state \textbf{ handle} \\
 \quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ True \\
 \quad ++ \\
 \quad fun r $\rightarrow$ \textbf{with } nondet \textbf{ handle if } r \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2)\ False \\
-\\
+
 \quad$\equiv$ (8) \\
 \textbf{with } state \textbf{ handle} \\
 \quad \textbf{with } nondet \textbf{ handle if } True \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
 \quad ++ \\
 \quad \textbf{with } nondet \textbf{ handle if } False \textbf{ then } set(x)(a.C1) \textbf{ else } set(y)(b.C2) \\
-\\
+
 \quad$\equiv$ (5,6) \\
 \textbf{with } state \textbf{ handle} \\
 \quad \textbf{with } nondet \textbf{ handle } set(x)(a.C1) \\
 \quad ++ \\
 \quad \textbf{with } nondet \textbf{ handle } set(y)(b.C2) \\
-\\
+
 \quad$\equiv$ (12) \\
 \textbf{with } state \textbf{ handle} \\
 \quad set(x)(a.\textbf{with } nondet \textbf{ handle } C1) \\
