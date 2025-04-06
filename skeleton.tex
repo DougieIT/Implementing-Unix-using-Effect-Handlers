@@ -20,9 +20,10 @@
 \input{commands.tex}
 
 \lstdefinelanguage{Koka}{
-  keywords={fun, var, match, val, if, then, else, do,  type, struct},
+  keywords={fun, var, match, val, if, then, fn, else, do,  type, struct},
   morekeywords=[2]{return,resume, handle, ctl, with,effect},
-  morekeywords=[3]{Sstate, Ready, Blocked, Proc, Nil, Cons, string, int},
+  morekeywords=[3]{Sstate, Done, Paused, Some, None, Ready, Blocked, Proc, Nil, Cons, string, int, fileSystem, FileSystem, directory, IList, iList, Inode, INode, dataRegion, DataRegion, Directory, state},
+  morekeywords=[4]{div, fail, fileCO,e,fileRW,produce,consume,co},
   sensitive=true,
   comment=[l]{//},
   morecomment=[s]{/*}{*/},
@@ -36,6 +37,7 @@
   keywordstyle=\color{purple},          % Group 1: basic syntax
   keywordstyle=[2]\color{blue},         % Group 2: effect-related
   keywordstyle=[3]\color{teal},         % Group 3: data constructors
+  keywordstyle=[4]\color{teal},
   commentstyle=\color{green!80!black},
   stringstyle=\color{orange},
   breaklines=true,
@@ -347,9 +349,10 @@ I can now write the exit handler. It will be seen that the function's signature 
 
 \begin{lstlisting}
 fun status(action : () -> <exit|e> a) : e int
-    with final ctl exit(code) code
-        action()
-        0
+  with handler 
+    return(x) -> 0
+    ctl exit(code) code
+  action()
 \end{lstlisting}
 In Hillerström’s language, an \textit{absurd} function was required to convert a computation with no meaningful return value into a form that was compatible with the type system. In contrast, in Koka we can return value directly without requiring a resumption. In cases where a computation never calls \lstinline{exit(n)}, we assume it has exited successfully and simply return 0.
 
@@ -564,8 +567,7 @@ effect fileRW
 \begin{lstlisting}
 fun fread( ino : int, fs : fileSystem ) : <div,fail|e> string
     val inode = lookupINode(ino, fs.ilist)
-    val ret = lookupDataRegion(inode.loc, fs.dreg)
-    ret
+    lookupDataRegion(inode.loc, fs.dreg)
 \end{lstlisting}
 
 The \texttt{lookup} utility function must account for the possibility of failure, so I introduce a \texttt{fail} effect and an associated \texttt{withDefault} handler to deal with this scenario:
@@ -585,22 +587,19 @@ The  handler for \lstinline{read} and \lstinline{write} operations in my system 
 
 
 \begin{lstlisting}
-fun fileRW<a>(m: () -> <fileRW,div,state<fileSystem>|e>a) : <state<fileSystem>,div|e>  a {
+fun fileRW<a>(m: () -> <fileRW,div,state<fileSystem>|e>a) : <state<fileSystem>,div|e>  a 
   with handler
-    fun read(ino) {
+    fun read(ino) 
       val cs = withDefault(None, fn() -> Some(fread(ino, get())))
       cs
-    }
-    fun write(ino, cs) {
-      withDefault((), fn() {
+    fun write(ino, cs) 
+      withDefault((), fn() 
           val fsys  = get()
           val fsys' = fwrite(ino, cs, fsys)
           put(fsys')
           ()
-      })
-    }
+        )
   m()
-}
 \end{lstlisting}
 
 
@@ -620,15 +619,14 @@ I now introduce a simplified serial file system. Note, the system does not track
 
 \begin{lstlisting}
 fun fopen(fname: string, fs : fileSystem) 
-    match fs.dir {
+    match fs.dir 
         Directory(d_list) ->
-        match d_list {
+        match d_list 
             Nil        -> fail()  
             Cons((k, v), rest) ->
             if k == fname then v
             else lookupDirectory(fname, Directory(rest))
-        }
-    }
+
 \end{lstlisting}    
 
 
@@ -640,14 +638,14 @@ When creating a file one must handle two possibilities:
 
 \begin{lstlisting}
 fun fcreate(fname: string, fs: fileSystem) : <div,fail> (int, fileSystem) 
-  if has(fname, fs.dir) then {
+  if has(fname, fs.dir) then 
     val ino = fopen(fname, fs)  
     val inode = lookupINode(ino, fs.ilist)  
     val dreg' = modifyDataRegion(inode.loc, "", fs.dreg)  
 
     (ino, FileSystem(fs.dir, fs.ilist, dreg', fs.dnext, fs.inext))  
-  }
-  else {
+  
+  else 
     val loc = fs.dnext  // next free data block index
     val dreg' = DataRegion(Cons((loc, ""), fs.dreg.dr))  
     val ino = fs.inext  // next free i-node index
@@ -657,7 +655,6 @@ fun fcreate(fname: string, fs: fileSystem) : <div,fail> (int, fileSystem)
     
     val fs' = FileSystem(dir', ilist', dreg', fs.dnext + 1, fs.inext + 1)  
     (ino, fs')
-  }
 
 fun has<a, b>(key: string, xs: directory) : <div> bool
     withDefault(False, fn() {
@@ -670,14 +667,14 @@ Using the functions defined above, I can now implement the handler for the \lsti
 
 \begin{lstlisting}
 fun fileCreateOpen<a>(action : () -> <fileCO, div, state<fileSystem>|e> a) : <state<fileSystem>,div|e> a
-  with handler {
+  with handler 
     return(x) -> x
-    ctl create(name) {
+    ctl create(name) 
       val maybeIno = withDefault(None, fn() {
         val fs0 = get()
         val (ino,fs1) = fcreate(name, fs0)
         put(fs1)
-        Some(ino))
+        Some(ino)})
       resume(maybeIno)
 
     ctl open(name) 
@@ -721,7 +718,7 @@ The signatures below define the \lstinline{produce} and \lstinline{consume} effe
 
 \begin{lstlisting}
 effect produce<b>
-  ctl produce(x : b) : ()   
+  ctl produce(x : b) : ()  
 
 effect consume<b>
   ctl consume() : b         
@@ -731,14 +728,16 @@ effect consume<b>
 The shallow handlers, \lstinline{pipe} and \lstinline{copipe}, mutually recurse to handle \lstinline{consume} and \lstinline{produce} operations. In my system, \lstinline{pipe} and \lstinline{copipe} are  functions, so no interleaving occurs, unlike in real Unix, where they are implemented as separate processes and can run concurrently:
 
 \begin{lstlisting}
-fun pipe<a,b,e>(p : () -> <produce<b>|e> a,c : () -> <consume <b>|e> a) : e a
+fun pipe(p : () -> <produce<b>, div|e> a, c : () -> <consume<b>, div|e> a): <div|e> a
     with raw ctl consume()
-        copipe(fn(x) rcontext.resume-shallow(x), p)
-        return(x) -> x
+      copipe(p, fn(x) rcontext.resume-shallow(x) )
+    c()
 
-fun copipe(c : b -><consume<b>, div|e>, c : () -> <produce<b>, div|e> a): <div|e> a
+fun copipe(p : () -> <produce<b>, div|e> a, c : b -> <consume<b>, div|e> a): <div|e> a
     with raw ctl produce(y)
-        pipe(fn() rcontext.resume-shallow(()), fn() c(y))
+      pipe(fn() rcontext.resume-shallow(()), fn() c(y))
+    p()
+
 \end{lstlisting}
 
 \section{Process Synchronisation}
@@ -751,7 +750,7 @@ I begin by defining the following effect:
 effect co
   ctl ufork() : int
   ctl wait(pid: int): ()
-  ctl sinterrupt() :()
+  ctl uinterrupt() :()
 \end{lstlisting}
 
 \begin{enumerate}
@@ -776,9 +775,7 @@ I then define the following three data types:
 
 
 \begin{lstlisting}
-rec type proc<a>
-  Proc
-    p: sstate<a> -> list<(int, a)>
+alias proc<a,e> = sstate<a,e> -> e list<(int, a)>
 
 type spstate<a>
   Ready
@@ -821,36 +818,41 @@ The scheduler below is implemented as a handler for the concurrency effect, \lst
 
 
 \begin{lstlisting}
-fun scheduler<a,e>(comp : () -> <co,div> a, init : sstate<a>) : <div|e> list<(int,a)>
-  with handler
-    return(x) -> 
-      val done'   = Cons((init.pid, x), init.done)
-      val newInit = Sstate( q=init.q, done = done', pid = init.pid, pnext= init.pnext)
-      runNext(newInit)
-
-    ctl ufork() -> 
-      val childProc  = fn(st) ->  resume(0, stChild)  
-      val childPid   = init.pnext
-      val newQ       =  init.q ++ 
-                        [(childPid, Ready(childProc(st)))]
-      val st'        = SState (q = newQ, done=init.done, pid=init.pid, pnext = childPid + 1 )
-      r(childPid, st')
-
-    ctl sinterrupt() ->
-      val interrupted = fn(stInt) -> resume(())
-      val newQ        = init.q ++ [(init.pid, Ready(Proc(interrupted)))]
-      val _ = runNext(Sstate(q = newQ, done = init.done, pid = init.pid, pnext = init.pnext))
-      ()
-
-    ctl wait(pid') ->
-      val waitingProc = fn(stWait) -> r((), stWait)
-      val newQ =
-        if hasPid(pid', init.q)
-        then init.q ++ [(init.pid, Blocked(pid', Proc(waitingProc)))]
-        else init.q ++ [(init.pid, Ready(Proc(waitingProc)))]
-      runNext(Sstate( q = newQ, done = init.done, pid=init.pid,pnext=init.pnext))      
-  comp()
+fun scheduler2<a,e>(state:sstate<a,<div|e>>, action:() -> <co,div|e> a): <div|e> list<(int,a)>
+  val h = 
+    with handler
+      return(x)
+        fn(st)
+          val done' = st.done ++ [(st.pid, x)]
+          runNext(Sstate(q=st.q, done=done', pid = st.pid, pnext=st.pnext))
+        
+      ctl uinterrupt()
+        fn(st)
+          val resumption = fn(st') {resume( () ) (st')}
+          val q' = st.q ++ [(st.pid, Ready(resumption))]
+          runNext(Sstate(q=q',done=st.done, pid=st.pid,pnext=st.pnext))
+        
+      ctl wait(pid')
+        fn(st)
+          val resumption = fn(st') resume(()) (st')
+          val q' =  if hasPid(pid', st.q) then 
+                      st.q ++ [(st.pid, Blocked(pid', resumption))] 
+                    else 
+                      st.q ++ [(st.pid, Ready(resumption))]
+          runNext(Sstate(q=q',done=st.done, pid=st.pid,pnext=st.pnext))
+        
+      ctl ufork()
+        fn(st)
+          val resumption = fn(st') resume(0)(st')
+          val pid' = st.pnext
+          val q' = st.q ++ [(pid', Ready(resumption))]
+          resume(pid')(Sstate(q=q', done=state.done, pid = st.pnext, pnext=pid'+1))
+      
+    action()
+  h(state)
 \end{lstlisting}    
+In Hillerström's implementation, he uses what are known as \textit{parameterised resumptions}. A parameterised resumption is a continuation that’s partially applied now (e.g. with a PID), and completed later (e.g. with updated scheduler state) to resume execution. Unfortunately Koka does not support parameterised resumptions natively, I emulate them using anonymous functions, denoted \textit{fn}, to wrap around the computation, and return these instead.  
+
 The scheduler handles \lstinline{ufork} operations by constructing a child process in a \lstinline{Ready} state and adding it to the end of the process queue. The child is resumed with 0 to indicate it is the child process, while the parent is resumed with the child's PID.
 
 The \lstinline{wait} operation takes a PID as an argument and checks the process queue for a matching process. If this process is in the queue, the waiting process is added in a Blocked state to the end of the process queue. Otherwise, it is added in a ready state to the end of the process queue.
@@ -860,6 +862,9 @@ The \lstinline{wait} operation takes a PID as an argument and checks the process
 \section{Chapter Conclusion}
 
 In this chapter I have shown how effect handler-oriented programming provides a clean, modular and composable framework for solving complex control flow and dynamic scoping problems. Using a Unix-like system as a case study, I have demonstrated how features such as \textit{file I/O}, \textit{environment variables}, \textit{process forking}, and \textit{scheduling} can be modelled as distinct effects and handled independently. 
+
+There are several aspects of this implementation that I found difficult. I struggled to track the control flow of computations because continuations are treated as a value and handlers can resume effects non-locally. This broke my usual intuition of programs executing sequentially and introduced a steep learning curve. However, I saw the benefits of being able to capture continuations in this way, when I was modelling processes. Attempting to model computations as restartable processes in an imperative language would have introduced considerable complexity and boilerplate, which I was able to avoid thanks to the expressiveness of resumptions.
+
 
 
 In the next chapter I will demonstrate how the same modular handler-based abstractions that aid program design also support program reasoning and verification.
@@ -1072,7 +1077,7 @@ Following the method used in the single-cell state model described above, I can 
 
 \begin{align*}
 \text{sessionmgr} \langle u, m \rangle \;\overset{\mathrm{def}}{=}\;& \\
-\quad \text{env} \langle u, (\lambda \langle \rangle.\; &\textbf{handle}\; m \langle \rangle\; \textbf{with} \\
+\quad \text{env} \langle u, (\lambda \langle \rangle.\; &\textbf{handle}\; m \langle \rangle\; \textbf{with } session \\
 &\left\{
 \begin{array}{ll}
   \textbf{return}\; res & \mapsto res \\
@@ -1128,21 +1133,21 @@ I provide one example below. For an exhaustive list, see appendice \ref{environm
 
 \hspace*{2em} $\equiv$ (apply) \\[5pt]
 \textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
-\hspace*{2em} \textbf{with session handle} \textbf{Su}$(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C))$ \\[5pt]
+\hspace*{2em} \textbf{with} \text{session} \textbf{handle} \textbf{Su}$(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C))$ \\[5pt]
 
 \hspace*{2em} $\equiv$ (11) \\[5pt]
 \textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
-\hspace*{2em} \text{env} $\langle \mathit{user}',\; m \rangle\; [\mathit{user}_j/\mathit{user}',\; \text{fun } x \rightarrow \textbf{with session handle}\; \textbf{Su}(\mathit{user}_k)(y.C)/m]$ \\[5pt]
+\hspace*{2em} \text{env} $\langle \mathit{user}',\; m \rangle\; [\mathit{user}_j/\mathit{user}',\; \text{fun } x \rightarrow \textbf{with } \text{session } \textbf{handle}\; \textbf{Su}(\mathit{user}_k)(y.C)/m]$ \\[5pt]
 
 \hspace*{2em} $\equiv$ (subst) \\[5pt]
 \textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
 \hspace*{2em} \textbf{with }\text{env} $\langle \mathit{user}_j \rangle$ \textbf{handle} \\ 
-\hspace*{4em} \textbf{with session handle} \textbf{Su}$(\mathit{user}_k)(y.C)$ \\[5pt]
+\hspace*{4em} \textbf{with } \text{session } \textbf{handle} \textbf{Su}$(\mathit{user}_k)(y.C)$ \\[5pt]
 
 \hspace*{2em} $\equiv$ (11) \\[5pt]
 \textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
 \hspace*{2em} \textbf{with }\text{env} $\langle \mathit{user}_j \rangle$ \textbf{handle} \\ 
-\hspace*{4em} \text{env} $\langle \mathit{user}',\; m \rangle\; [\mathit{user}_k/\mathit{user}',\; \text{fun } y \rightarrow \textbf{with session handle}\; C/m]$ \\[5pt]
+\hspace*{4em} \text{env} $\langle \mathit{user}',\; m \rangle\; [\mathit{user}_k/\mathit{user}',\; \text{fun } y \rightarrow \textbf{with } \text{session } \textbf{handle}\; C/m]$ \\[5pt]
 
 \hspace*{2em} $\equiv$ (subst) \\[5pt]
 \textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
@@ -1167,14 +1172,15 @@ This \lstinline{multiState} handler works in a similar way to the single-cell ha
 
 \begin{figure}[H]
 \centering
+
 \[
-\text{multiState}\ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
+\text{multicell}\ \overset{\text{def}}{\equiv} \ \text{handler} \left\{
 \begin{array}{ll}
 \text{get}(k_0; k) &\mapsto \text{fun } s \mapsto \text{let } v = \textbf{lookup}(k_0, s) \text{ in } (k\ v)\ s \\
 \text{set}(k_0, v; k) &\mapsto \text{fun } s \mapsto \text{let s'} = \textbf{update}([k_0:=v],s) \text{ in } (k\ ())\ s'\ \\
 \text{return } x &\mapsto \text{fun } \_ \mapsto \text{return } x
 \end{array}
-\right\}
+\right.
 \]
 \caption{Handler for multicell state}
 \label{fig:multicell-handler}
@@ -1477,7 +1483,7 @@ Memory mappings that were created in the process shall be unmapped before the pr
  is destroyed.
  \end{tcolorbox}
  
-Whilst there is no direct correspondence to the properties for \textit{backtrackable state} shown in Tang and Schrijvers paper, an anology with the \lstinline{fail} operation $\varnothing$ can be drawn. The identities below show how state is lost after failure: 
+We can draw a direct correspondence between our \lstinline{exit} operation and the \lstinline{fail} operation $\varnothing$ in \textit{backtrackable state} shown in Tang and Schrijvers paper. The identities below show how state is lost after failure: 
 
 \[
 \textbf{put-right-identity}: \quad \texttt{put}\;s \gg \varnothing = \varnothing
@@ -1487,10 +1493,10 @@ Whilst there is no direct correspondence to the properties for \textit{backtrack
 \textbf{get-right-identity}: \quad \texttt{get}\; \gg \varnothing = \varnothing
 \]
 
-The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually, and when a computation returns, its state is no longer stored. The return clause simply returns a value and does not resume the continuation, thereby losing all variable bindings and its associated state. 
+The placement of the state handler inside the nondeterminism handler ensures that state is scoped to each branch individually, and when a computation fails, its state is no longer stored. The return clause also displays this property as it simply returns a value and does not resume the continuation, thereby losing all variable bindings and its associated state. The get-right-identity proof is shown below, see appendice \ref{set-fail-idempotency} for the \textit{put-right-identity} proof.
 
 \vspace{1em}
-{\large{\textbf{Proof of Idempotence of Return and Local State}}}
+{\large{\textbf{Proof of Exit as a Get-Right-Identity}}}
 
 \normalsize
 
@@ -1544,7 +1550,7 @@ Memory mappings created in the parent shall be retained in the child process
   
 \end{figure}
 
-In line with the above properties, I can demonstrate that my handlers allow state operations to distribute over forking, following the inheritance functionality prescribed in the Unix specification. 
+In line with the above properties, I can demonstrate that my handlers allow state operations to distribute over forking, following the inheritance functionality prescribed in the Unix specification. The get-left-distributivity proof is shown below, see appendice \ref{set-distributivity-over-forking} for the \textit{put-left-distributivity} proof.
 
 
 {\large{\textbf{Proof - \textit{Get} Distributing Over \textit{Fork}}}}
@@ -1702,14 +1708,14 @@ In conclusion, this chapter can be summarised by the following observations:
 \section{Unix Implementation in Koka}
 In this project I have implemented the \textit{Tiny Unix} system described by Hillerström. I implemented exception handling, a basic I/O scheme, user functionality, a basic serial file system, piping, and two methods of process scheduling. I successfully achieved my first goal by demonstrating that it is possible to simulate a Unix-like system in Koka in a concise and modular manner, despite the complex challenges this posed.
 
-\subsection*{Koka Implementation: Future Work}
-The Koka implementation could be extended by including the features described in section \ref{process-synchronisation}. Currently, the system cannot guarantee a correct write order unless it is done sequentially, i.e. within a single process and without interrupts, defeating the purpose of a time-sharing system. The addition of \textit{mutexes} with \lstinline{wait} operations would address this problem and provide correct interleaved writing.
+\textbf{Future Work: } The Koka implementation could be extended by including the features described in section \ref{process-synchronisation}. Currently, the system cannot guarantee a correct write order unless it is done sequentially, i.e. within a single process and without interrupts, defeating the purpose of a time-sharing system. The addition of \textit{mutexes} with \lstinline{wait} operations would address this problem and provide correct interleaved writing.
 
 \section{Reasoning}
 Although I was able to verify that some features of my Unix implementation comply with the rules set out in the Unix Specifications, I was unable to formally prove the correctness  of all features using algebraic equivalences, due to the challenges discussed in section \ref{reasoning-conclusion}.
-\subsection*{Reasoning: Future Work}
-This project could be expanded by exploring the techniques of automated reasoning outlined in McLaughlin's PhD thesis, \textit{Relational Reasoning for Effects and Handlers
-} \cite{McLaughlin2020}. In particular, this approach could be especially useful in verifying my implementation of piping.
+
+\textbf{Future Work: } This project could be expanded by exploring the techniques of automated reasoning outlined in McLaughlin's PhD thesis, \textit{Relational Reasoning for Effects and Handlers
+} \cite{McLaughlin2020}. In particular, this approach could be especially useful in verifying my implementation of piping. Pretnars paper \textit{An Introduction to
+Algebraic Effects and Handlers} \cite{pretnar_introduction_2015} he introduces a set of operational rules which could be used to provide similar proofs. 
 
 % \bibliographystyle{plain}
 \bibliographystyle{plain}
@@ -1719,11 +1725,11 @@ This project could be expanded by exploring the techniques of automated reasonin
 % You may delete everything from \appendix up to \end{document} if you don't need it.
 \appendix
 
-\chapter{Single-cell state proofs} 
+\chapter{Proofs} 
 
 \section{Simplified State} \label{full-simplified-single-cell-state-proof}
 
-\subsubsection*{Idempotence of Set}
+\subsection{Idempotence of Set}
 Performing consecutive \lstinline{set} operations retains only the final update, as each invocation completely overwrites the current state:
 \[
 \begin{aligned}
@@ -1737,24 +1743,23 @@ Performing consecutive \lstinline{set} operations retains only the final update,
 
 \underline{Left Hand Side}
 
-\[ 
-\begin{array}{l}
-\quad\equiv\quad (11) \\[5pt]
-\text{fun }\_ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C)/k] \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun }\_ \rightarrow ((\text{fun } x \rightarrow \text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ ())\ a \\[5pt]
-\quad\equiv\quad (8) \\[5pt]
-\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } set(b)(y.C))\ a \\[5pt]
-\quad\equiv\quad (11) \\[5pt]
-\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (k\ ())\ s\ [b/s, \text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C/k])\ a \\[5pt]
-\quad\equiv\quad (\text{subst}) \\[5pt]
-\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (\text{fun } y \rightarrow \text{\textbf{with} state \textbf{handle} } C)\ ())\ b)\ a \\[5pt]
-\quad\equiv\quad (8) \\[5pt]
-\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } C)\ b)\ a \\[5pt]
-\quad\equiv\quad (\text{application}) \\[5pt]
-\text{fun }\_ \rightarrow (\text{\textbf{with} state \textbf{handle} } C)\ b
-\end{array}
-\]
+\begin{longtable}{@{}l@{}}
+\quad$\equiv$ (11) \\
+\text{fun }$\_$ \rightarrow (k\ ())\ s\ [a/s,\ \text{fun } x \rightarrow \textbf{with } state \textbf{handle } set(b)(y.C)/k] \\
+\quad$\equiv$ (subst) \\
+\text{fun }$\_$ \rightarrow ((\text{fun } x \rightarrow \textbf{with } state \textbf{handle } set(b)(y.C))\ ())\ a \\
+\quad$\equiv$ (8) \\
+\text{fun }$\_$ \rightarrow (\textbf{with } state \textbf{handle } set(b)(y.C))\ a \\
+\quad$\equiv$ (11) \\
+\text{fun }$\_$ \rightarrow (\text{fun }\_ \rightarrow (k\ ())\ s\ [b/s,\ \text{fun } y \rightarrow \textbf{with } state \textbf{handle } C/k])\ a \\
+\quad$\equiv$ (subst) \\
+\text{fun }\_ \rightarrow (\text{fun }\_ \rightarrow (\text{fun } y \rightarrow \textbf{with } state \textbf{handle } C)\ ())\ b)\ a \\
+\quad$\equiv$ (8) \\
+\text{fun }$\_$ \rightarrow (\text{fun }\_ \rightarrow (\textbf{with } state \textbf{handle } C)\ b)\ a \\
+\quad$\equiv$ (application) \\
+\text{fun }$\_$ \rightarrow (\textbf{with } state \textbf{handle } C)\ b \\
+\end{longtable}
+
 
 \underline{Right Hand Side}
 \[ 
@@ -1770,7 +1775,7 @@ Performing consecutive \lstinline{set} operations retains only the final update,
 
 LHS $\equiv$ RHS
 
-\subsubsection*{Idempotence of Get}
+\subsection{Idempotence of Get}
 Reading the state multiple times without an intervening \lstinline{set} yields the same result each time. Repeating a get operation without modifying the state in between has no observable effect on the computation.
 
 
@@ -1823,7 +1828,7 @@ LHS $\equiv$ RHS
 
 
 
-\subsubsection*{Set-Then-Get}
+\subsection{Set-Then-Get}
 Reading the state immediately after setting it yields the value that was just written. This property ensures that state updates are immediately observable.
 \[
 \begin{aligned}
@@ -1869,7 +1874,7 @@ Reading the state immediately after setting it yields the value that was just wr
 
 
 
-\subsubsection*{Get-Then-Set}
+\subsection{Get-Then-Set}
 A \lstinline{get} followed by a \lstinline{set}, updates the state with a new value whilst preserving the former state value by binding it in the continuation. 
 
 
@@ -1917,16 +1922,730 @@ LHS $\equiv$ RHS
 
 \section{Environment Variable Proofs} \label{environment-variable-proofs}
 
-\chapter{Participants' information sheet}
+\subsection{Su-Su}
 
-If you had human participants, include key information that they were given in
-an appendix, and point to it from the ethics declaration.
+\renewcommand{\arraystretch}{1}
+\begin{longtable}{@{}l@{}}
+{sessionmgr} $\langle \mathit{user}_i,\; \textbf{Su}(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C)) \rangle$ \\[5pt]
 
-\chapter{Participants' consent form}
+\hspace*{2em} $\equiv$ (apply) \\[5pt]
+\textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
+\hspace*{2em} \textbf{with session handle} \textbf{Su}$(\mathit{user}_j)(x.\;\textbf{Su}(\mathit{user}_k)(y.C))$ \\[5pt]
 
-If you had human participants, include information about how consent was
-gathered in an appendix, and point to it from the ethics declaration.
-This information is often a copy of a consent form.
+\hspace*{2em} $\equiv$ (11) \\[5pt]
+\textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
+\hspace*{2em} \text{env} $\langle \mathit{user}',\; m \rangle\; [\mathit{user}_j/\mathit{user}',\; \text{fun } x \rightarrow \textbf{with session handle}\; \textbf{Su}(\mathit{user}_k)(y.C)/m]$ \\[5pt]
 
+\hspace*{2em} $\equiv$ (subst) \\[5pt]
+\textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
+\hspace*{2em} \textbf{with }\text{env} $\langle \mathit{user}_j \rangle$ \textbf{handle} \\ 
+\hspace*{4em} \textbf{with session handle} \textbf{Su}$(\mathit{user}_k)(y.C)$ \\[5pt]
+
+\hspace*{2em} $\equiv$ (11) \\[5pt]
+\textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
+\hspace*{2em} \textbf{with }\text{env} $\langle \mathit{user}_j \rangle$ \textbf{handle} \\ 
+\hspace*{4em} \text{env} $\langle \mathit{user}',\; m \rangle\; [\mathit{user}_k/\mathit{user}',\; \text{fun } y \rightarrow \textbf{with session handle}\; C/m]$ \\[5pt]
+
+\hspace*{2em} $\equiv$ (subst) \\[5pt]
+\textbf{with }\text{env} $\langle \mathit{user}_i \rangle$ \textbf{handle} \\ 
+\hspace*{2em} \textbf{with }\text{env} $\langle \mathit{user}_j \rangle$ \textbf{handle} \\ 
+\hspace*{4em} \textbf{with }\text{env} $\langle \mathit{user}_k \rangle$ \textbf{handle} \\ 
+\hspace*{6em} $C$
+\end{longtable}
+
+
+
+
+
+\subsection{Su-Ask}
+
+\begin{longtable}{@{}l@{}}
+\textbf{sessionmgr}$\langle \text{user}_i \rangle$ \ \textbf{Su(}\text{user}_j\textbf{)}(x.\ \textbf{whoami}()) \\
+
+\quad$\equiv$\quad (apply) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle} \\
+\quad \textbf{with } session \textbf{handle } Su(\text{user}_j)(x.\ \textbf{whoami}()(y. C)) \\
+
+\quad$\equiv$\quad (11) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle} \\
+\quad env$\langle \text{user}',\ \text{resume} \rangle$ \ [\text{user}_j/\text{user}',\ fun x $\rightarrow$ \textbf{with } session \textbf{handle } \textbf{whoami}()(y. C) / resume] \\
+
+\quad$\equiv$\quad (subst) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle} \\
+\quad env$\langle \text{user}_j,\ fun x \rightarrow \textbf{with } session \textbf{handle } \textbf{whoami}()(y. C) \rangle$ \\
+
+\quad$\equiv$\quad (11) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle} \\
+\quad \textbf{with } env$\langle \text{user}_j \rangle$ \textbf{handle} \\
+\quad\quad \textbf{with } session \textbf{handle } \textbf{whoami}()(y. C) \\
+
+\quad$\equiv$\quad (12) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle} \\
+\quad \textbf{with } env$\langle \text{user}_j \rangle$ \textbf{handle } \textbf{whoami}()(y.\ \textbf{with } session \textbf{handle } C) \\
+
+\quad$\equiv$\quad (11) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle} \\
+\quad \textbf{case user \{} \\
+\quad\quad \text{user}_1\ $\rightarrow$ \textbf{resume } "user_1" \\
+\quad\quad \cdots \\
+\quad\quad \text{user}_n\ $\rightarrow$ \textbf{resume } "user_n" \\
+\quad \} \ [()/v,\ fun y $\rightarrow$ \textbf{with } env$\langle \text{user}_j \rangle$, session \textbf{handle } C / resume] \\
+
+\quad$\equiv$\quad (subst) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle } fun y $\rightarrow$ \textbf{with } env$\langle \text{user}_j \rangle$, session \textbf{handle } C \ "user$_j$" \\
+
+\quad$\equiv$\quad (8) \\
+\textbf{with } env$\langle \text{user}_i \rangle$ \textbf{handle } \textbf{with } env$\langle \text{user}_j \rangle$, session \textbf{handle } C["user_j"/y] \\
+\end{longtable}
+
+
+
+\subsection{Ask-Ask}
+\[
+\begin{array}{l}
+\text{sessionmgr}⟨\text{user}_i⟩\ \text{whoami}()(x.\ \text{whoami}()(y.\ C)) \\[5pt]
+
+\quad\equiv\quad (\text{apply}) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \textbf{with } \text{session}\ \textbf{handle}\ \text{whoami}()(x.\ \text{whoami}()(y.\ C)) \\[5pt]
+
+\quad\equiv\quad (12) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle}\ \text{whoami}()(x.\ \textbf{with } \text{session}\ \textbf{handle}\ \text{whoami}()(y.\ C)) \\[5pt]
+
+\quad\equiv\quad (11) \\[5pt]
+\text{case user \{} \\
+\quad \text{user}_1\ \rightarrow\ \text{resume } "user_1" \\
+\quad \cdots \\
+\quad \text{user}_n\ \rightarrow\ \text{resume } "user_n" \\
+\text{\}}\ [()/v,\ \text{fun } x\ \rightarrow\ \textbf{with } \text{env}⟨\text{user}_j⟩, \text{session}\ \textbf{handle } \text{whoami}()(y.\ C)/\text{resume}] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{fun } x\ \rightarrow\ \textbf{with } \text{env}⟨\text{user}_j⟩, \text{session}\ \textbf{handle } C\ "user_j" \\[5pt]
+
+\quad\equiv\quad (8) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_j⟩\ \textbf{handle} \\
+\quad \textbf{with } \text{session}\ \textbf{handle }\ \text{whoami}()(y.\ C["user_j"/x]) \\[5pt]
+
+\quad\equiv\quad (12) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_j⟩\ \textbf{handle}\ \text{whoami}()(y.\ \textbf{with } \text{session}\ \textbf{handle } C["user_j"/x]) \\[5pt]
+
+\quad\equiv\quad (11) \\[5pt]
+\text{case user \{} \\
+\quad \text{user}_1\ \rightarrow\ \text{resume } "user_1" \\
+\quad \cdots \\
+\quad \text{user}_n\ \rightarrow\ \text{resume } "user_n" \\
+\text{\}}\ [()/v,\ \text{fun } y\ \rightarrow\ \textbf{with } \text{env}⟨\text{user}_j⟩, \text{session}\ \textbf{handle } C["user_j"/x] / \text{resume}] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\text{fun } y\ \rightarrow\ \textbf{with } \text{env}⟨\text{user}_j⟩, \text{session}\ \textbf{handle } C["user_j"/x,\ "user_j"/y] \\[5pt]
+
+\quad\equiv\quad (8) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_j⟩\ \textbf{handle} \\
+\quad \textbf{with } \text{session}\ \textbf{handle } C["user_j"/x,\ "user_j"/y] \\
+\end{array}
+\]
+
+\subsection{Ask-Su}
+
+\[
+\begin{array}{l}
+\text{sessionmgr}⟨\text{user}_i⟩\ \text{whoami}()(x.\ \text{Su}(\text{user}_j)(y.\ C)) \\[5pt]
+
+\quad\equiv\quad (\text{apply}) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \textbf{with } \text{session}\ \textbf{handle }\ \text{whoami}()(x.\ \text{Su}(\text{user}_j)(y.\ C)) \\[5pt]
+
+\quad\equiv\quad (12) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \text{whoami}()(x.\ \textbf{with } \text{session}\ \textbf{handle }\ \text{Su}(\text{user}_j)(y.\ C)) \\[5pt]
+
+\quad\equiv\quad (11) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \text{case user \{} \\
+\quad\quad \text{user}_1\ \rightarrow\ \text{resume } "user_1" \\
+\quad\quad \cdots \\
+\quad\quad \text{user}_n\ \rightarrow\ \text{resume } "user_n" \\
+\quad\} \\
+\quad [()/v,\ \text{fun } x\ \rightarrow\ \textbf{with } \text{session}\ \textbf{handle }\ \text{Su}(\text{user}_j)(y.\ C) / \text{resume}] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \text{fun } x\ \rightarrow\ \textbf{with } \text{session}\ \textbf{handle }\ \text{Su}(\text{user}_j)(y.\ C)\ "user_j" \\[5pt]
+
+\quad\equiv\quad (8) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \textbf{with } \text{session}\ \textbf{handle }\ \text{Su}(\text{user}_j)(y.\ C["user_j"/x]) \\[5pt]
+
+\quad\equiv\quad (11) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \text{env}⟨\text{user}', m⟩\ [\text{user}_j/\text{user}',\ \text{fun } y\ \rightarrow\ \textbf{with } \text{session}\ \textbf{handle } C["user_j"/x]] \\[5pt]
+
+\quad\equiv\quad (\text{subst}) \\[5pt]
+\textbf{with } \text{env}⟨\text{user}_i⟩\ \textbf{handle} \\
+\quad \textbf{with } \text{env}⟨\text{user}_j⟩\ \textbf{handle} \\
+\quad\quad \textbf{with } \text{session}\ \textbf{handle } C["user_j"/x] \\
+\end{array}
+\]
+
+
+\section{Set-Fail Idempotency} \label{set-fail-idempotency}
+\begin{longtable}{@{}l@{}}
+\textbf{with } nondet \textbf{ handle} \\
+\quad \textbf{with } state \textbf{ handle} \\
+\quad\quad \textbf{with } status \textbf{ handle} \\
+\\
+\quad$\equiv$ (12) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad \textbf{with } state \textbf{ handle} \\
+\quad\quad set(a)(x. \textbf{with } status \textbf{ handle } Exit(v)(y. C)) \\
+\\
+\quad$\equiv$ (11) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ (k ())\ s\ [a/s,\ fun x $\rightarrow$ \textbf{with } state, status \textbf{ handle } Exit(v)(y. C) / k] \\
+\\
+\quad$\equiv$ (subst) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ (fun x $\rightarrow$ \textbf{with } state, status \textbf{ handle } Exit(v)(y. C))()\ a \\
+\\
+\quad$\equiv$ (8) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ \textbf{with } state, status \textbf{ handle } Exit(v)(y. C)\ a \\
+\\
+\quad$\equiv$ (11) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ \textbf{with } state, status \textbf{ handle } n \\
+\quad\quad [v/n,\ fun y $\rightarrow$ \textbf{with } status \textbf{ handle } C / k]\ a \\
+\\
+\quad$\equiv$ (subst) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ \textbf{with } state, status \textbf{ handle } v\ a \\
+\end{longtable}
+
+
+
+
+\section{Set Distributivity over Forking} \label{set-distributivity-over-forking}
+\begin{longtable}{@{}l@{}}
+\textbf{with } nondet \textbf{ handle} \\
+\quad \textbf{with } state \textbf{ handle} \\
+\quad\quad set(a)(x. Fork()(y. C)) \\
+\\
+\quad$\equiv$ (11) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ (k())\ s\ [a/s,\ fun x $\rightarrow$ \textbf{with } state \textbf{ handle } Fork()(y. C)] \\
+\\
+\quad$\equiv$ (subst) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ (fun x $\rightarrow$ \textbf{with } state \textbf{ handle } Fork()(y. C))()\ a \\
+\\
+\quad$\equiv$ (apply) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ \textbf{with } state \textbf{ handle } Fork()(y. C)\ a \\
+\\
+\quad$\equiv$ (12) \\
+\textbf{with } nondet \textbf{ handle} \\
+\quad fun \_ $\rightarrow$ Fork()(y. \textbf{with } state \textbf{ handle } C)\ a \\
+\\
+\quad$\equiv$ (11) \\
+fun \_ $\rightarrow$ \textbf{resume } True \texttt{ ++ } \textbf{resume } False \\
+\quad [fun y $\rightarrow$ \textbf{with } nondet, state \textbf{ handle } C / resume]\ a \\
+\\
+\quad$\equiv$ (subst) \\
+fun \_ $\rightarrow$ \\
+\quad fun y $\rightarrow$ \textbf{with } nondet, state \textbf{ handle } C\ True \\
+\quad\quad \texttt{++} \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad \quad a\\
+\quad fun y $\rightarrow$ \textbf{with } nondet, state \textbf{ handle } C\ False \\
+\end{longtable}
+
+
+\section{Koka Implementation}
+\label{koka-implementation}
+
+\begin{lstlisting}
+module unix
+import std/core/console
+
+fun main()
+  with bio
+  echo("Douglas Torrance, 2025")
+
+// =========================================
+// Section 3.1 - Status
+// =========================================
+
+effect exit
+  ctl exit(n : int) : a
+
+fun status(action : () -> <exit|e> a) : e int
+  with handler 
+    return(x) -> 0
+    ctl exit(code) code
+  action()
+
+// =========================================
+// Section 3.2 - Basic IO
+// =========================================
+
+alias filedesc = int
+val stdout = 0
+
+effect bio
+  // writeBio a string to a file descriptor
+  fun writeBio( fd : filedesc, s : string ) : ()
+
+fun bio( action : () -> <bio|e> a ) : e (a,string)
+  var buf := ""    
+  with handler
+    return (x) -> (x, buf)
+    fun writeBio(fd, s) -> { buf := buf ++ s }
+  action()
+
+fun echo( s : string ) : bio ()
+  writeBio(stdout,s)
+
+// =========================================
+// Section 3.3 - User Environment
+// =========================================
+
+type user
+  Root
+  Alice
+  Bob
+
+effect su
+  ctl su( u : user ) : ()
+
+effect whoami
+  fun whoami() : string
+
+fun env( user : user, action : () -> <whoami|e> a ) : e a
+  with fun whoami() 
+    match user
+      Root  -> "root"
+      Alice -> "alice"
+      Bob   -> "bob"
+  action()
+
+fun sessionmgr( u : user, action : () -> <su,whoami|e> a ) : e a
+  with env(u)
+  with ctl su( u' : user )
+         mask<whoami>
+           with env(u')
+           resume(())
+  action()
+
+// =========================================
+// Section 3.4 - Multi-Process System
+// =========================================
+
+// 3.4.1 - Forking
+
+effect fork
+  ctl fork() : bool     
+
+fun forking( action : () -> <fork|e> a ) : e list<a>
+  with handler
+    return(x) [x]
+    ctl fork() resume(True) ++ resume(False)
+  action()
+
+// 3.4.2 - Scheduling
+type pstate<e,a>
+  Done(result : a)
+  Paused(resumption : () -> e pstate<e,a> )
+
+effect interrupt
+  ctl interrupt() : ()
+
+fun reify-process(action : () -> <interrupt|e> a) : e pstate<e,a> 
+  with handler  
+    return(x) -> Done(x)
+    ctl interrupt() -> Paused(fn() resume(()))
+  action()
+
+fun scheduler( pstates : list<pstate<<fork,div|e>,a>> ) : <div|e> list<a>
+  fun schedule( todos : list<pstate<<fork,div|e>,a>>, done : list<a> ) : <div|e> list<a>
+    match todos
+      Nil -> done
+      Cons(Done(x),ps') -> schedule(ps', Cons(x,done))
+      Cons(Paused(m),ps') ->
+        val ps = forking( m )
+        schedule( ps' ++ ps, done )
+  schedule(pstates,[])
+
+fun timeshare( action : () -> <fork,interrupt,div|e> a ) : <div|e> list<a>
+  val p = Paused( fn() reify-process(action) )
+  scheduler([p])
+
+fun interrupt-writeBio( action : () -> <bio,interrupt|e> a ) : <bio,interrupt|e> a
+  with override fun writeBio(fd,s) { interrupt(); writeBio(fd,s) }
+  action()
+
+// =========================================
+// Section 3.5 - Basic Serial File System
+// =========================================
+
+type directory 
+  Directory
+    d_list : list<(string, int)>
+
+type dataRegion 
+  DataRegion
+    dr : list<(int, string)>
+
+type iNode
+  INode
+    no : int
+    loc : int
+
+type iList 
+  IList
+    il : list<(int, iNode)>  
+
+struct fileSystem
+  dir   : directory
+  ilist : iList
+  dreg  : dataRegion
+  dnext : int
+  inext : int
+
+val fs0 : fileSystem =
+  FileSystem (
+    Directory([("stdout", 0)]),
+    IList([(0, INode ( 1, loc = 0 ))]),
+    DataRegion([(0, "")]),
+    1,
+    1
+  )
+
+// Section 3.5.1 - File Reading and Writing
+
+effect fileRW
+  ctl read( ino : int ) : option<string>
+  ctl write( ino : int, s : string ) : ()
+
+fun fread( ino : int, fs : fileSystem ) : <div,fail|e> string
+  val inode = lookupINode(ino, fs.ilist)
+  lookupDataRegion(inode.loc, fs.dreg)
+  
+
+fun fwrite( ino : int, contents : string, fs : fileSystem ) : <div,fail|e> fileSystem
+  match fs
+    FileSystem(dir, ilist, dreg, dnext, inext) -> 
+      val inode  = lookupINode(ino, ilist)
+      val oldstr = lookupDataRegion(inode.loc, dreg)  
+      val newstr = oldstr ++ contents  
+      val newdr  = modifyDataRegion(inode.loc, newstr, dreg)  
+      FileSystem(dir, ilist, newdr, dnext, inext)
+
+effect fail
+  ctl fail() : a
+
+fun withDefault<a>(default: a, m: () -> <fail|e>a) : e a
+  with handler
+    return(x) -> x
+    ctl fail() -> default
+  m()
+
+fun fileRW<a>(m: () -> <fileRW,div,state<fileSystem>|e>a) : <state<fileSystem>,div|e>  a 
+  with handler
+    fun read(ino) 
+      val cs = withDefault(None, fn() -> Some(fread(ino, get())))
+      cs
+    fun write(ino, cs) 
+      withDefault((), fn() 
+          val fsys  = get()
+          val fsys' = fwrite(ino, cs, fsys)
+          put(fsys')
+          ()
+      )
+  m()
+
+type option<t>
+  Some { value : t }
+  None
+
+effect state<a> 
+  ctl get() : a
+  ctl put(x: a) : ()
+
+// Section 3.5.2 - File Creation and File Opening
+
+effect fileCO
+  ctl create( fname : string ) : option<int>
+  ctl open( fname : string ) : option<int>
+
+fun fopen(fname: string, fs : fileSystem) 
+  match fs.dir 
+    Directory(d_list) ->
+      match d_list 
+        Nil        -> fail()  
+        Cons((k, v), rest) ->
+          if k == fname then v
+          else lookupDirectory(fname, Directory(rest))
+      
+fun fcreate(fname: string, fs: fileSystem) : <div,fail> (int, fileSystem) 
+  if has(fname, fs.dir) then 
+    val ino = fopen(fname, fs)  
+    val inode = lookupINode(ino, fs.ilist)  
+    val dreg' = modifyDataRegion(inode.loc, "", fs.dreg)  
+    (ino, FileSystem(fs.dir, fs.ilist, dreg', fs.dnext, fs.inext))  
+  
+  else 
+    val loc = fs.dnext  
+    val dreg' = DataRegion(Cons((loc, ""), fs.dreg.dr))  
+    val ino = fs.inext  
+    val inode = INode(loc, 1)  
+    val ilist' = IList(Cons((ino, inode) , fs.ilist.il))  
+    val dir' = Directory(Cons((fname, ino), fs.dir.d_list))  
+    val fs' = FileSystem(dir', ilist', dreg', fs.dnext + 1, fs.inext + 1)  
+    (ino, fs')
+
+fun has<a, b>(key: string, xs: directory) : <div> bool
+  withDefault(False, fn() {
+    val disc = lookupDirectory(key, xs)  
+    True  
+  })
+
+fun fileCreateOpen<a>(action : () -> <fileCO, div, state<fileSystem>|e> a) : <state<fileSystem>,div|e> a
+  with handler 
+    return(x) -> x
+    ctl create(name) 
+      val maybeIno = withDefault(None, fn() {
+        val fs0 = get()
+        val (ino,fs1) = fcreate(name, fs0)
+        put(fs1)
+        Some(ino)
+      })
+      resume(maybeIno)
+    
+    ctl open(name) 
+      val maybeIno = withDefault(None, fn() {
+        val fs0 = get()
+        val ino = fopen(name, fs0)
+        Some(ino)
+      })
+      resume(maybeIno)
+  action()
+
+// Section 3.5.3 - File Linking
+
+effect fileLU
+  fun link(src: string, tgt : string) :()
+
+fun flink(src : string, dest : string, fs : fileSystem) : <div,fail> fileSystem 
+  if has(dest, fs.dir) then
+    fail()  
+  else 
+    val ino = lookupDirectory(src, fs.dir)
+    val dir' = Directory(Cons((dest, ino), fs.dir.d_list))
+    val inode = lookupINode(ino, fs.ilist)
+    val inode' = INode(inode.no, inode.loc + 1)
+    val ilist' = modifyINode(ino, inode', fs.ilist)
+
+    FileSystem(dir', ilist', fs.dreg, fs.dnext, fs.inext)
+
+pub fun fileLU(action: () -> <fileLU, div, state<fileSystem>|e> a): <state<fileSystem>, div|e> a
+  with handler
+    fun link(src, tgt)
+      with withDefault(())
+      val fs = flink(src, tgt, get())
+      put(fs)
+
+  action() 
+  
+// =========================================
+// Section 3.6 - Piping
+// =========================================
+
+effect produce<b>
+  ctl produce(x : b) : ()   // yield a value of type b
+
+effect consume<b>
+  ctl consume() : b         // await/ask for a value of type b
+
+fun pipe(p : () -> <produce<b>, div|e> a, c : () -> <consume<b>, div|e> a): <div|e> a
+    with raw ctl consume()
+      copipe(p, fn(x) rcontext.resume-shallow(x) )
+    c()
+
+fun copipe(p : () -> <produce<b>, div|e> a, c : b -> <consume<b>, div|e> a): <div|e> a
+    with raw ctl produce(y)
+      pipe(fn() rcontext.resume-shallow(()), fn() c(y))
+    p()
+
+
+// =========================================
+// Section 3.7 - Process Synchronisation
+// =========================================
+
+effect co
+  ctl ufork() : int
+  ctl wait(pid: int): ()
+  ctl uinterrupt() :()
+  
+alias proc<a,e> = sstate<a,e> -> e list<(int, a)>
+
+rec type spstate<a,e>
+  Ready
+    r : proc<a,e>
+  Blocked 
+    pid :int 
+    proc:proc<a,e>
+
+type sstate<a,e> 
+  Sstate     
+    q : list<(int, spstate<a,e>)>
+    done  : list<(int,a)>
+    pid   : int
+    pnext : int
+
+pub fun runState(init:b, action: () -> <div, state<b>|e> a): <div|e> (b,a)
+  var curr := init
+  with handler
+    return(x)   (curr,x)
+    fun get()   curr
+    fun put(x)  curr := x
+  action() 
+
+fun runNext(st: sstate<a,<div|e>> ) : <div|e> list<(int,a)> 
+  match st.q
+    Nil -> st.done
+    Cons((bpid, Blocked(pid', proc)), ps) -> 
+      val newQ = ps ++ [(bpid, Blocked(pid', proc))]
+      val newsState =  Sstate (q = newQ, done = st.done, pid = st.pid, pnext = st.pnext)
+      runNext(newsState) 
+    Cons((rpid, Ready(res)), ps) -> 
+      val newState =  Sstate (q = ps, done = st.done, pid = rpid, pnext = st.pnext)
+      res(newState)
+
+fun scheduler2<a,e>(state:sstate<a,<div|e>>, action:() -> <co,div|e> a): <div|e> list<(int,a)>
+  val h = 
+    with handler
+      return(x)
+        fn(st)
+          val done' = st.done ++ [(st.pid, x)]
+          runNext(Sstate(q=st.q, done=done', pid = st.pid, pnext=st.pnext))
+        
+      ctl uinterrupt()
+        fn(st)
+          val resumption = fn(st') resume( () ) (st')
+          val q' = st.q ++ [(st.pid, Ready(resumption))]
+          runNext(Sstate(q=q',done=st.done, pid=st.pid,pnext=st.pnext))
+        
+      ctl wait(pid')
+        fn(st)
+          val resumption = fn(st') resume(()) (st')
+          val q' =  if hasPid(pid', st.q) then 
+                      st.q ++ [(st.pid, Blocked(pid', resumption))] 
+                    else 
+                      st.q ++ [(st.pid, Ready(resumption))]
+          runNext(Sstate(q=q',done=st.done, pid=st.pid,pnext=st.pnext))
+        
+      ctl ufork()
+        fn(st)
+          val resumption = fn(st') resume(0)(st')
+          val pid' = st.pnext
+          val q' = st.q ++ [(pid', Ready(resumption))]
+          resume(pid')(Sstate(q=q', done=state.done, pid = st.pnext, pnext=pid'+1))
+      
+    action()
+  h(state)
+
+pub fun timeshare2(action: () -> <co,div|e> a): <div|e> list<(int,a)>
+  with scheduler2(Sstate( [], [], 1, 2))
+  action()
+
+// =====================================
+// Helper Functions
+// =====================================
+
+fun hasPid<a>(pid : int, xs : list<(int, spstate<a,e>)>) : bool 
+  match xs
+    Nil -> False
+    Cons((pid1, _), rest) ->
+      if pid1 == pid then True else hasPid(pid, rest)
+
+
+fun lookupDirectory(key : string, xs : directory) : <div, fail|e> int
+  match xs
+    Directory (d_list) ->
+      match d_list
+        Nil -> fail()  
+        Cons((k, v), rest) ->
+          if k == key
+          then v
+          else lookupDirectory(key, Directory ( d_list = rest ))
+
+fun lookupINode(key : int, xs : iList) : <div, fail|e> iNode
+  match xs
+    IList(il) ->
+      match il
+        Nil -> fail()  
+        Cons((k, v), rest) -> 
+          if k == key
+          then v
+          else lookupINode(key, IList(rest))  
+
+fun lookupDataRegion(key : int, xs : dataRegion) : <div, fail|e> string
+  match xs
+    DataRegion(dr) ->  
+      match dr
+        Nil -> fail()  
+        Cons((k, v), rest) ->
+          if k == key
+          then v
+          else lookupDataRegion(key, DataRegion(rest))  
+
+fun modifyDirectory(key : string, value : int, xs : directory) : directory
+  match xs
+    Directory(d_list) ->
+      Directory(modifyListDirectory(key, value, d_list))
+
+fun modifyListDirectory(key : string, value : int, xs : list<(string, int)>) : list<(string, int)>
+  match xs
+    Nil -> [(key, value)]  // If key is not found, insert new entry
+    Cons((k, v), rest) ->
+      if k == key
+      then Cons((key, value), rest)  // Replace existing value
+      else Cons((k, v), modifyListDirectory(key, value, rest))  // Recurse
+
+fun modifyINode(key : int, value : iNode, xs : iList) : iList
+  match xs
+    IList(il) ->
+      IList(modifyListINode(key, value, il))
+
+fun modifyListINode(key : int, value : iNode, xs : list<(int, iNode)>) : list<(int, iNode)>
+  match xs
+    Nil -> [(key, value)]  // Insert new entry if key is not found
+    Cons((k, v), rest) ->
+      if k == key
+      then Cons((key, value), rest)  // Replace existing value
+      else Cons((k, v), modifyListINode(key, value, rest))  // Recurse
+
+fun modifyDataRegion(key : int, value : string, xs : dataRegion) : dataRegion
+  match xs
+    DataRegion(dr) ->
+      DataRegion(modifyListDataRegion(key, value, dr))
+
+fun modifyListDataRegion(key : int, value : string, xs : list<(int, string)>) : list<(int, string)>
+  match xs
+    Nil -> [(key, value)]  // Insert new entry if key is not found
+    Cons((k, v), rest) ->
+      if k == key
+      then Cons((key, value), rest)  // Replace existing value
+      else Cons((k, v), modifyListDataRegion(key, value, rest))  // Recurse
+
+pub fun fileIO(action: () -> <fileRW, fileCO, fileLU, state<fileSystem>,div|e> a): <state<fileSystem>, div|e> a
+  with fileRW
+  with fileCreateOpen
+  with fileLU
+  action()
+
+
+
+
+
+\end{lstlisting}
 
 \end{document}
